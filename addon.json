@@ -1,0 +1,14 @@
+{
+	"type"		:	"tool",
+	"tags"		:	[ "build", "fun" ],
+	"ignore"	:
+	[
+		"*.psd",
+		"*.vcproj",
+		"*.git",
+		"*.svn*",
+		"workshop images*",
+		"LICENSE",
+		"README.md"
+	]
+}
