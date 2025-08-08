@@ -15,8 +15,8 @@ function ConstraintEditor.HandleNetRequests( mode )
 
 		elseif action == "set_constr_data" then
 
-
-			constrBrowser:SetConstrData( data.constrData, data.args )
+			PrintTable(data)
+			constrBrowser:SetConstrData( data[1], data[2] )
 
 		end
 
@@ -35,7 +35,7 @@ function ConstraintEditor.RequestConstrData( constrID )
 
 end
 
--- Will update constraint
+-- Can recreate constraint
 function ConstraintEditor.RequestSetConstrData( data )
 
 	if not istable( data ) then return end

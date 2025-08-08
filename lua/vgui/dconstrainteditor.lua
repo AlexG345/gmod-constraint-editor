@@ -11,13 +11,20 @@ function PANEL:Init()
 	self.Properties = self.Divider:Add( "DProperties" )
 	self.Divider:SetTop( self.Properties )
 
-	self.ButtonsDivider = self.Divider:Add( "DHorizontalDivider" )
-	self.Divider:SetBottom( self.ButtonsDivider )
+	self.DividerButtons = self.Divider:Add( "DHorizontalDivider" )
+	self.Divider:SetBottom( self.DividerButtons )
 
-	local applyButton = self.ButtonsDivider:Add( "DButton" )
-	self.ButtonsDivider:SetLeft( applyButton )
-	self.applyButton = applyButton
-	applyButton:SetText( "Apply" )
+	local ButtonApply = self.DividerButtons:Add( "DButton" )
+	self.DividerButtons:SetLeft( ButtonApply )
+	self.ButtonApply = ButtonApply
+	ButtonApply:SetImage( "icon16/database_refresh.png" )
+	ButtonApply:SetText( "Apply" )
+
+	local ButtonDelete = self.DividerButtons:Add( "DButton" )
+	self.DividerButtons:SetRight( ButtonDelete )
+	self.ButtonDelete = ButtonDelete
+	ButtonDelete:SetImage( "icon16/database_delete.png" )
+	ButtonDelete:SetText( "Delete" )
 
 	self.typeRestoreFuncs = {
 		boolean	= tobool,
@@ -36,15 +43,15 @@ function PANEL:PerformLayout( width, height )
 	self.Divider:SetBottomMin( 20 )
 	self.Divider:SetTopMin( height - 20 )
 	self.Divider:DoConstraints()
-	self.ButtonsDivider:SetLeftMin( width / 2 )
-	self.ButtonsDivider:SetRightMin( width / 2 )
+	self.DividerButtons:SetLeftMin( width / 2 )
+	self.DividerButtons:SetRightMin( width / 2 )
 
 end
 
 -- codedData is nearly the same as constrData but uses integer keys to conserve order
 function PANEL:SetConstrData( codedData, args )
 
-	self.Properties:Init()
+	self.Properties:Clear()
 	self.constrData = {}
 
 	if not args then return end
@@ -96,9 +103,9 @@ function PANEL:GetConstrData()
 end
 
 
-function PANEL:GetApplyButton()
+function PANEL:GetButtonApply()
 
-	return self.applyButton
+	return self.ButtonApply
 
 end
 

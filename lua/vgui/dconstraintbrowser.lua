@@ -25,6 +25,7 @@ function PANEL:Init()
 		"Keepupright",
 		"Motor",
 		"Muscle",
+		"NoCollide",
 		"Pulley",
 		"Rope",
 		"Slider",
@@ -41,19 +42,22 @@ function PANEL:Init()
 		Keepupright		= { icon = "icon16/arrow_up.png", },
 		Motor			= { icon = "icon16/cd_burn.png", },
 		Muscle			= { icon = "icon16/sport_football.png", },
-		Pulley			= { icon = "icon16/chart_line.png", },
+		Pulley			= { icon = "icon16/vector.png", },
 		Rope			= { icon = "icon16/link_break.png", },
 		Slider			= { icon = "icon16/control_equalizer.png", },
 		Weld			= { icon = "icon16/link.png", },
-		Winch			= { icon = "icon16/vector.png", },
+		Winch			= { icon = "icon16/webcam.png", },
+		NoCollide		= { icon = "icon16/collision_off.png", },
 	}
+
+	self.defaultIcon	= "icon16/cog_add.png"
 
 end
 
 
-function PANEL:GetApplyButton()
+function PANEL:GetButtonApply()
 
-	return self.ConstraintEditor:GetApplyButton()
+	return self.ConstraintEditor:GetButtonApply()
 
 end
 
@@ -65,56 +69,63 @@ function PANEL:GetConstrData()
 end
 
 
-function PANEL:GetDataPerConstrType( constrType )
+function PANEL:GetDataPerConstrType( constrType, create )
 
 	if not isstring( constrType ) then return false end
 
-	local data = self.DataPerConstrType[constrType]
+	local t = self.DataPerConstrType
 
-	return istable( data ) and data or false
+	if create and not t[constrType] then
+		t[constrType] = {}
+	end
+
+	return t[constrType]
 
 end
 
 -- Adds a "folder" for that type of constraint if not already present
 function PANEL:AddConstrType( constrType )
 
-	local data = self:GetDataPerConstrType( constrType )
+	local data = self:GetDataPerConstrType( constrType, true )
 
-	if not data or data.panel then return end
+	if not IsValid( data.panel ) then data.panel = self.Tree:AddNode( constrType, data.icon or self.defaultIcon ) end
 
-	data.panel = self.Tree:AddNode( constrType, data.icon )
+	return data
 
 end
 
 
-function PANEL:RemoveConstrType( constrType )
+function PANEL:RemoveConstrType( constrType, data )
 
-	local data = self:GetDataPerConstrType( constrType )
+	local data = data or self:GetDataPerConstrType( constrType )
 
-	if data and data.panel then
-
+	if istable( data ) and data.panel then
 		data.panel:Remove()
-
+		data.panel = nil
 	end
+
+end
+
+
+function PANEL:ClearTreeVisual()
+
+	local rootNode = self.Tree:Root()
+	rootNode.ChildNodes = nil
+	rootNode:CreateChildNodes()
+	return rootNode
 
 end
 
 
 function PANEL:Clear()
 
-	local rootNode = self.Tree:Root()
-	rootNode.ChildNodes = nil
-	rootNode:CreateChildNodes()
+	self:ClearTreeVisual()
 
 	self.ConstraintEditor.Properties:Clear()
 
-	for _, constrType in ipairs( self.ConstrTypes ) do
+	for constrType, data in pairs( self.DataPerConstrType ) do
 
-		local data = self:GetDataPerConstrType( constrType )
-		if data and data.panel then
-			data.panel:Remove()
-			data.panel = nil
-		end
+		self:RemoveConstrType( constrType, data )
 
 	end
 
@@ -123,14 +134,14 @@ end
 
 function PANEL:SortConstrTypes()
 
-	local rootNode = self.Tree:Root()
-	rootNode.ChildNodes = nil
-	rootNode:CreateChildNodes()
+	local rootNode = self:ClearTreeVisual()
+	local cTypes = table.GetKeys( self.DataPerConstrType )
+	table.sort( cTypes )
 
-	for _, constrType in ipairs( self.ConstrTypes ) do
+	for _, constrType in ipairs( cTypes ) do
 
 		local data = self:GetDataPerConstrType( constrType )
-		local node = data and data.panel
+		local node = istable( data ) and data.panel
 
 		if node then
 			--[[
@@ -141,10 +152,9 @@ function PANEL:SortConstrTypes()
 			node:SetDrawLines( not rootNode:IsRootNode() )
 			rootNode:InstallDraggable( node )
 			]]
+			print("ok:",constrType)
 			rootNode.ChildNodes:Add( node )
 		end
-
-		rootNode:InvalidateLayout()
 
 	end
 
@@ -158,8 +168,7 @@ function PANEL:AddConstrs( surfaceConstrData )
 
 	for constrType, constrIDs in pairs( surfaceConstrData ) do
 
-		local data = self:GetDataPerConstrType( constrType )
-		if data and not data.panel then self:AddConstrType( constrType ) end
+		local data = self:AddConstrType( constrType )
 
 		for _, constrID in ipairs( constrIDs ) do
 

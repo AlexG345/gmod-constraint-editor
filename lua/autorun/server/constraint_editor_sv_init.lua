@@ -1,5 +1,6 @@
 util.AddNetworkString( "constraint_editor_net" )
 
+-- This is bad: since its shared by all players, it could easily lead to client abuse (modification of other people's constraints)
 ConstraintEditor.constrs = {}
 
 
@@ -140,10 +141,8 @@ end
 function ConstraintEditor.SetEditedConstr( constr, ply )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr, true )
-
 	if not ( constrData and desc ) then return end
-
-	ConstraintEditor.SendDataToClient( "set_constr_data", { constrData = constrData, args = desc.Args }, ply )
+	ConstraintEditor.SendDataToClient( "set_constr_data", { constrData, desc.Args }, ply )
 
 end
 

@@ -90,10 +90,11 @@ function TOOL.BuildCPanel( cPanel )
 
 	end
 
-	local applyButton = constrBrowser:GetApplyButton()
-		function applyButton:DoClick()
+	local ButtonApply = constrBrowser:GetButtonApply()
+		function ButtonApply:DoClick()
 			ConstraintEditor.RequestSetConstrData( constrBrowser:GetConstrData() )
 		end
+
 
 	t, l = nil, nil
 
