@@ -9,13 +9,14 @@ if SERVER then
 
 	flags = nil
 ]]
+
 if CLIENT then
 
 	TOOL.Category	= "Constraints"
 	TOOL.Name		= "Constraint Editor"
 
 	TOOL.Information = {
-		--{ name = "left" }
+		{ name = "left" }
 	}
 
 	TOOL.ClientConVar = {
@@ -44,16 +45,20 @@ end
 
 function TOOL:LeftClick( trace )
 
+	local sp = game.SinglePlayer()
 	local ent = trace.Entity
-	if not ( ent:IsValid() or ent:IsWorld() ) then return false end
+	if not ( ent:IsValid() or sp and ent:IsWorld() ) then return false end
 
-	if CLIENT and not game.SinglePlayer() then return true end
+	if CLIENT then return true end
+
+	ConstraintEditor.TryCleanupTables()
 
 	ConstraintEditor.SetEditedEntity( ent, self:GetOwner() )
 
 	return true
 
 end
+
 
 ConstraintEditor.HandleNetRequests( mode )
 
@@ -90,11 +95,94 @@ function TOOL.BuildCPanel( cPanel )
 
 	end
 
-	local applyButton = constrBrowser:GetApplyButton()
-		function applyButton:DoClick()
+	local ButtonApply = constrBrowser:GetButtonApply()
+		function ButtonApply:DoClick()
 			ConstraintEditor.RequestSetConstrData( constrBrowser:GetConstrData() )
 		end
 
+	local ButtonDelete = constrBrowser:GetButtonDelete()
+		function ButtonDelete:DoClick()
+			local constrData = constrBrowser:GetConstrData()
+			if not istable( constrData ) then return end
+			local data = {
+				constrID = constrData.constrID,
+				CEDelete = true
+			}
+			ConstraintEditor.RequestSetConstrData( data )
+		end
+
+
 	t, l = nil, nil
+
+end
+
+
+function TOOL:DrawHUD()
+
+	--local ply = self:GetOwner()
+
+	local constrBrowser = controlpanel.Get( mode ).constrBrowser
+	if not constrBrowser then return end
+	local constrEditor = constrBrowser.ConstraintEditor
+	local cacheData = constrEditor.constrDataCache
+	local newData = constrEditor.constrData
+
+	if not newData then return end
+
+	local function find( key )
+		local value = newData[key]
+		return value ~= nil and value or cacheData[key]
+	end
+
+	-- bad for booleans
+	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
+
+	if Ent1 == NULL or Ent2 == NULL or not ( Ent1 and Ent2 ) then return end
+
+	if IsValid( Ent1 ) then
+		pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
+	else
+		pos1 = LPos1 or LPos2
+	end
+
+	if IsValid( Ent2 ) then
+		pos2 = LPos2 and Ent2:LocalToWorld( LPos2 ) or Ent2:GetPos()
+	else
+		pos2 = LPos2 or LPos1
+	end
+
+	local positions = {}
+	table.insert( positions, pos1 )
+	table.insert( positions, find( "WPos2" ) )
+	table.insert( positions, find( "WPos3" ) )
+	table.insert( positions, pos2 )
+
+	cam.Start3D()
+
+	local beamcolor = Color( 0, 200, 0, 255 )
+	render.SetColorMaterial()
+	render.StartBeam( #positions )
+	for _, pos in ipairs( positions ) do
+		render.AddBeam( pos, 1, 0, beamcolor )
+	end
+	render.EndBeam()
+
+	cam.End3D()
+
+	local bordersize	= 4
+	local boxcolor		= Color( 0, 0, 0, 200 )
+	local textcolor		= color_white
+	local index			= math.floor(#positions / 2)
+	local textPos		= ( ( positions[index] + positions[index + 1] ) / 2 ):ToScreen()
+	local font			= "DermaDefault"
+
+	if textPos.visible then draw.WordBox( bordersize, textPos.x, textPos.y, constrType, font, boxcolor, textcolor, TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM ) end
+
+	for _, data in ipairs( { { ent = Ent1, pos = pos1 }, { ent = Ent2, pos = pos2 } } ) do
+		if data.ent:IsWorld() then
+			textPos = ( data.pos ):ToScreen()
+			draw.WordBox( bordersize, textPos.x, textPos.y, "[World]", font, boxcolor, textcolor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		end
+	end
 
 end

@@ -1,9 +1,184 @@
 util.AddNetworkString( "constraint_editor_net" )
 
-ConstraintEditor.constrs = {}
+local UPDATE_CONSTR = 0
+local SET_MENU_SURFACE_DATA = 1
+local SET_MENU_DEEP_DATA = 2
+local GET_MENU_DEEP_DATA = 3
+local REMOVE_MENU_CONSTR = 4
+local ADD_MENU_SURFACE_DATA = 5
+
+local REQ_BIT_COUNT = 3
 
 
--- First returned table containins lists of creation IDs of ent's valid constraints.
+--------------------------------
+--    Constraint Accessing    --
+--------------------------------
+
+
+-- Keys are constraint IDs, values are tables containing:
+-- 	ent: the constraint entity,
+-- 	allowedPlayers: players who can ask server to edit the constraint
+ConstraintEditor.KnownConstrs = {}
+
+-- Keys are players, values are entities (props)
+ConstraintEditor.EditedEnts = {}
+
+-- Time since last table cleanup
+ConstraintEditor.lastTablesCleanup = CurTime()
+
+-- Revoke all the constraint editing permissions of the player ply
+function ConstraintEditor.ClearAccess( ply )
+
+	if not ply then return end
+
+	ConstraintEditor.EditedEnts[ply] = nil
+
+	for constrID, data in pairs( ConstraintEditor.KnownConstrs ) do
+		local allowed = data.allowedPlayers
+		allowed[ply] = nil
+		if next( allowed ) == nil then ConstraintEditor.ForgetConstr( constrID ) end
+	end
+
+end
+
+
+-- Give or revoke the player ply's permission to edit the constraint associated with constrID (or ent)
+function ConstraintEditor.SetAccess( ply, constrID, allow, ent )
+
+	constrID = constrID or ent and ent:GetCreationID()
+
+	if not constrID then return end
+
+	if not ConstraintEditor.KnownConstrs[constrID] then
+
+		if not allow then return end
+		ConstraintEditor.KnownConstrs[constrID] = { allowedPlayers = {}, ent = ent }
+
+	end
+
+	local plys = ConstraintEditor.KnownConstrs[constrID].allowedPlayers
+
+	plys[ply] = allow and true or nil
+
+	if next( plys ) == nil then ConstraintEditor.ForgetConstr( constrID ) end
+
+	if not allow then ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply ) end
+
+end
+
+
+-- Transfers players permissions from constr to newConstr
+function ConstraintEditor.TransferAccess( constr, newConstr )
+
+	if not ( constr and newConstr ) then return end
+
+	local constrID = constr:GetCreationID()
+	local newConstrID = newConstr:GetCreationID()
+	local data = ConstraintEditor.KnownConstrs[constrID]
+
+	if not data then return end
+
+	for ply in pairs( data.allowedPlayers ) do
+
+		--ConstraintEditor.SetAccess( ply, constrID, false, constr )
+		ConstraintEditor.SetAccess( ply, newConstrID, true, newConstr )
+
+		-- Update the menus
+		local surfaceConstrData = { [newConstr.Type] = { newConstrID } }
+		ConstraintEditor.SendDataToClient( ADD_MENU_SURFACE_DATA, surfaceConstrData, ply )
+
+	end
+
+end
+
+
+-- Returns constraint associated with constrID only if it exists and player ply has permissions to edit it
+function ConstraintEditor.Access( ply, constrID )
+
+	local data = ConstraintEditor.KnownConstrs[constrID]
+
+	return data and data.allowedPlayers[ply] and data.ent or false
+
+end
+
+
+-- Forgets data related to this constrID (the associated constraint and the players editing permissions)
+function ConstraintEditor.ForgetConstr( constrID )
+
+	local data = ConstraintEditor.KnownConstrs[constrID]
+
+	if data then
+		for ply in pairs( data.allowedPlayers ) do
+			ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply )
+		end
+	end
+
+	ConstraintEditor.KnownConstrs[constrID] = nil
+
+end
+
+
+-- Forgets constrIDs:
+--		that have no related data
+-- 		whose associated constraint is not valid (e.g. has been removed)
+-- 		that have no player permissions
+-- Also clears EditedEnts if player or entity is invalid
+function ConstraintEditor.CleanupTables()
+
+	for constrID, data in pairs( ConstraintEditor.KnownConstrs ) do
+		if not data or not IsValid( data.ent ) or next( data.allowedPlayers ) == nil then
+			ConstraintEditor.ForgetConstr( constrID )
+		end
+	end
+
+	for ply, ent in pairs( ConstraintEditor.EditedEnts ) do
+		if not IsValid( ply ) then
+			ConstraintEditor.ClearAccess( ply )
+		elseif not IsValid( ent ) then
+			ConstraintEditor.EditedEnts[ply] = nil
+		end
+	end
+
+end
+
+
+-- Don't clean up tables if it was already done not long ago
+function ConstraintEditor.TryCleanupTables()
+	local now = CurTime()
+	if now - ( ConstraintEditor.lastTablesCleanup or 0 ) < 30 then return end
+	ConstraintEditor.lastTablesCleanup = now
+
+	ConstraintEditor.CleanupTables()
+end
+
+
+-- Deletes a constraint and data associated to its constrID
+function ConstraintEditor.DeleteConstr( constr )
+	constr.CEInvalid = true
+	local constrID = constr:GetCreationID()
+	ConstraintEditor.ForgetConstr( constrID )
+	SafeRemoveEntity( constr )
+end
+
+
+--------------------------------
+--  Constraint Manipulation   --
+--------------------------------
+
+
+-- Try to get the descriptor of the constraint type represented by the argument
+function ConstraintEditor.GetConstrDescriptor( a )
+
+	local constrType = isstring( a ) and a or ( istable( a ) or isentity( a ) ) and a.Type
+
+	local desc = duplicator.ConstraintType[ constrType ]
+
+	if desc then return desc, constrType end
+
+end
+
+
+-- First returned table contains lists of creation IDs of ent's valid constraints.
 -- The keys used to access those lists are constraint types.
 -- Second returned table's keys are creation IDs, values are constraint entities
 function ConstraintEditor.GetSurfaceConstrData( ent )
@@ -20,7 +195,7 @@ function ConstraintEditor.GetSurfaceConstrData( ent )
 		local constr		= constrData.Constraint or NULL
 		local constrID		= constr.GetCreationID and constr:GetCreationID()
 
-		if constr:IsValid() and constrType and constrID then
+		if constr:IsValid() and not constr.CEInvalid and constrType and constrID then
 			constrs[constrID] = constr
 			surfaceConstrData[constrType] = surfaceConstrData[constrType] or {}
 			table.insert( surfaceConstrData[constrType], constrID )
@@ -35,7 +210,7 @@ end
 
 function ConstraintEditor.GetConstrData( a, coded )
 
-	local desc, cType = ConstraintEditor.GetConstrDesc( a )
+	local desc, constrType = ConstraintEditor.GetConstrDescriptor( a )
 
 	if not desc then return end
 
@@ -49,17 +224,16 @@ function ConstraintEditor.GetConstrData( a, coded )
 	if next( data ) == nil then return end
 
 	data.constrID = a.constrID or a.GetCreationID and a:GetCreationID()
-	data.Type = cType
+	data.Type = constrType
 
 	return data, desc
 
 end
 
 
-
 function ConstraintEditor.DecodeConstrData( data )
 
-	local desc = ConstraintEditor.GetConstrDesc( data )
+	local desc = ConstraintEditor.GetConstrDescriptor( data )
 
 	if not desc then return end
 
@@ -72,11 +246,16 @@ function ConstraintEditor.DecodeConstrData( data )
 
 end
 
-
-function ConstraintEditor.SetConstrData( constr, newData, ply )
+-- Constraint editing / deletion happens here
+function ConstraintEditor.UpdateConstr( constr, newData, ply )
 
 	local data, desc = ConstraintEditor.GetConstrData( constr, true )
 	if not ( data and desc ) then return end
+
+	if newData.CEDelete then
+		ConstraintEditor.DeleteConstr( constr )
+		return
+	end
 
 	local updateNeeded	= false
 
@@ -84,55 +263,189 @@ function ConstraintEditor.SetConstrData( constr, newData, ply )
 
 		if newData[i] == nil then newData[i] = data[i] end
 
+		if isentity( newData[i] ) and isfunction( newData[i].GetClass ) and newData[i]:GetClass() == "gmod_anchor" then -- without this sliders get deleted if they are constrained to world
+
+			newData[i] = duplicator.CreateEntityFromTable( ply, duplicator.CopyEntTable( newData[i] ) )
+
+		end
+
 		updateNeeded = updateNeeded or newData[i] ~= data[i]
 
 	end
 
 	if not updateNeeded then return end
 
-	--SetPhysConstraintSystem( ent.constraintSystem )
+	local buildInfo = constr.BuildDupeInfo
+	local newConstr
 
-	local newConstr = desc.Func( unpack( newData ) )
-	if not newConstr and newConstr:IsValid() then return false end
+	if buildInfo then
+		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
+		newConstr = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, newData )
+	else
+		-- Uses normal duplicator (worse than advanced duplicator 2 BUT no addon needed)
+		newConstr = desc.Func( unpack( newData ) )
+	end
+
+	if not ( newConstr and newConstr:IsValid() ) then return false end
 
 	undo.ReplaceEntity( constr, newConstr)
 	cleanup.ReplaceEntity( constr, newConstr )
 
-	local constrID, newConstrID = constr:GetCreationID(), newConstr:GetCreationID()
-	if ConstraintEditor.constrs[constrID] then
-		ConstraintEditor.constrs[constrID] = nil
-		ConstraintEditor.constrs[newConstrID] = newConstr
-	end
+	-- Give permissions to edit the new constraint to all players that had access to the old one.
+	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
+	ConstraintEditor.TransferAccess( constr, newConstr )
 
-	SafeRemoveEntity( constr )
-
+	-- todo: check if players other than ply are editing the constr so that editor stays open for them
 	if ply then ConstraintEditor.SetEditedConstr( newConstr, ply ) end
 
-	--SetPhysConstraintSystem( NULL )
+	-- Comes after the "SetEditedConstr" to keep the node open in ply's menu in some specific cases
+	ConstraintEditor.DeleteConstr( constr )
 
 end
 
 
+-- Based on AdvDupe2's CreateConstraintFromTable implementation
+-- Credits: Advanced Duplicator 2 team (https://github.com/wiremod/advdupe2)
+function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newData, ply )
+
+	local first, second = constr.Ent1, constr.Ent2 or constr.Ent4
+	local firstPosReset, secondPosReset = first:GetPos(), second:GetPos()
+	local firstAngReset, secondAngReset = first:GetAngles(), second:GetAngles()
+	local firstValid, secondValid = ( first ~= nil and not first:IsWorld() ), ( second ~= nil and not second:IsWorld() )
+
+	local Bone1, Bone1Index, ReEnableFirst, Bone1PosReset, Bone1AngReset
+	local Bone2, Bone2Index, ReEnableSecond, Bone2PosReset, Bone2AngReset
+
+	if buildInfo then
+
+		if first ~= nil and secondValid and buildInfo.EntityPos ~= nil then
+			local SecondPhys = second:GetPhysicsObject()
+			if IsValid( SecondPhys ) then
+				ReEnableSecond = SecondPhys:IsMoveable()
+				SecondPhys:EnableMotion(false)
+				second:SetPos( first:GetPos() - buildInfo.EntityPos )
+				if buildInfo.Bone2 then
+					Bone2Index = buildInfo.Bone2
+					Bone2 = second:GetPhysicsObjectNum( Bone2Index )
+					if IsValid( Bone2 ) then
+						Bone2PosReset = Bone2:GetPos()
+						Bone2AngReset = Bone2:GetAngles()
+						Bone2:EnableMotion(false)
+						Bone2:SetPos(second:GetPos() + buildInfo.Bone2Pos)
+						Bone2:SetAngles(buildInfo.Bone2Angle)
+					end
+				end
+			end
+		end
+
+		if firstValid and buildInfo.Ent1Ang ~= nil then
+			local FirstPhys = first:GetPhysicsObject()
+			if IsValid( FirstPhys ) then
+				ReEnableFirst = FirstPhys:IsMoveable()
+				FirstPhys:EnableMotion(false)
+				first:SetAngles(buildInfo.Ent1Ang)
+				if buildInfo.Bone1 then
+					Bone1Index = buildInfo.Bone1
+					Bone1 = first:GetPhysicsObjectNum(Bone1Index)
+					if IsValid( Bone1 ) then
+						Bone1PosReset = Bone1:GetPos()
+						Bone1AngReset = Bone1:GetAngles()
+						Bone1:EnableMotion(false)
+						Bone1:SetPos(first:GetPos() + buildInfo.Bone1Pos)
+						Bone1:SetAngles(buildInfo.Bone1Angle)
+					end
+				end
+			end
+		end
+
+		if secondValid then
+			if buildInfo.Ent2Ang ~= nil then
+				second:SetAngles(buildInfo.Ent2Ang)
+			elseif buildInfo.Ent4Ang ~= nil then
+				second:SetAngles(buildInfo.Ent4Ang)
+			end
+		end
+	end
+
+	local ok, Ent = pcall( factory, unpack( newData, 1, #newData ) )
+
+	if ply and not ( ok and Ent ) and ply then
+		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint!" )
+	end
+
+	if Ent then Ent.BuildDupeInfo = table.Copy( buildInfo ) end
+
+	-- Move the entities back after constraining them. No point in moving the world though.
+
+	if firstValid then
+		first:SetPos( firstPosReset )
+		first:SetAngles( firstAngReset )
+		if IsValid(Bone1) and Bone1Index ~= 0 then
+			Bone1:SetPos( Bone1PosReset ) -- + firstPosReset
+			Bone1:SetAngles( Bone1AngReset )
+		end
+
+		local FirstPhys = first:GetPhysicsObject()
+		if IsValid(FirstPhys) and ReEnableFirst then
+			FirstPhys:EnableMotion(true)
+		end
+	end
+
+	if secondValid then
+		second:SetPos( secondPosReset )
+		second:SetAngles( secondAngReset )
+		if IsValid( Bone2 ) and Bone2Index ~= 0 then
+			Bone2:SetPos( Bone2PosReset ) -- + secondPosReset
+			Bone2:SetAngles( Bone2AngReset )
+		end
+
+		local SecondPhys = second:GetPhysicsObject()
+		if IsValid( SecondPhys ) and ReEnableSecond then
+			SecondPhys:EnableMotion(true)
+		end
+	end
+
+	if Ent and Ent.length then
+		Ent.length = constr.length
+	end -- Fix for weird bug with ropes
+
+	return Ent
+end
+
+
+--------------------------------
+--       Network things       --
+--------------------------------
+
+
 function ConstraintEditor.SendDataToClient( action, data, ply )
 
-	if not isstring( action ) then return end
+	if not isnumber( action ) then return end
 	if not isentity( ply ) and ply:IsPlayer() then return end
-	if not istable( data ) then data = {} end
 
 	net.Start( "constraint_editor_net" )
-		net.WriteString( action )
-		net.WriteTable( data )
+		net.WriteUInt( action, REQ_BIT_COUNT )
+		if istable( data ) then
+			net.WriteTable( data )
+		else
+			net.WriteUInt( data, 24 ) -- for constrID
+		end
 	net.Send( ply )
 
 end
 
 
-
 function ConstraintEditor.SetEditedEntity( ent, ply )
 
+	ConstraintEditor.ClearAccess( ply )
+
+	ConstraintEditor.EditedEnts[ply] = ent
+
 	local surfaceConstrData, constrs = ConstraintEditor.GetSurfaceConstrData( ent )
-	ConstraintEditor.constrs = constrs
-	ConstraintEditor.SendDataToClient( "set_surface_data", surfaceConstrData, ply )
+	for constrID, constr in pairs( constrs ) do
+		ConstraintEditor.SetAccess( ply, constrID, true, constr )
+	end
+	ConstraintEditor.SendDataToClient( SET_MENU_SURFACE_DATA, surfaceConstrData, ply )
 
 end
 
@@ -140,37 +453,40 @@ end
 function ConstraintEditor.SetEditedConstr( constr, ply )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr, true )
-
 	if not ( constrData and desc ) then return end
-
-	ConstraintEditor.SendDataToClient( "set_constr_data", { constrData = constrData, args = desc.Args }, ply )
+	ConstraintEditor.SendDataToClient( SET_MENU_DEEP_DATA, { constrData, desc.Args }, ply )
 
 end
 
 
+-- Client safety checks are here
 function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, ply )
 
-		local request = net.ReadString()
+		local request = net.ReadUInt( REQ_BIT_COUNT )
 
-		if request == "get_constr_data" then
+		if request == GET_MENU_DEEP_DATA then
 
-			local constrID = net.ReadInt( 25 )
-			local constr = ConstraintEditor.constrs[constrID]
+			local constrID = net.ReadUInt( 24 )
+
+			local constr = ConstraintEditor.Access( ply, constrID )
+
+			if not ( constr or IsValid( constr ) ) then
+				ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply )
+				ConstraintEditor.ForgetConstr( constrID )
+			end
 
 			ConstraintEditor.SetEditedConstr( constr, ply )
 
-		elseif request == "set_constr_data" then
+		elseif request == UPDATE_CONSTR then
 
 			local newData = net.ReadTable()
 
-			local constrID	= newData.constrID
-			if not constrID then return end
+			local constr = ConstraintEditor.Access( ply, newData.constrID )
+			if not constr then return end
 
-			local constr	= ConstraintEditor.constrs[ constrID ]
-
-			ConstraintEditor.SetConstrData( constr, newData, ply )
+			ConstraintEditor.UpdateConstr( constr, newData, ply )
 
 		end
 

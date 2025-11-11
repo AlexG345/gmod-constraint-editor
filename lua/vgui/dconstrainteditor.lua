@@ -3,6 +3,7 @@ local PANEL = {}
 function PANEL:Init()
 
 	self.constrArgsCache = {}
+	self.constrDataCache = {}
 
 	self.Divider = self:Add( "DVerticalDivider" )
 	self.Divider:Dock( FILL )
@@ -11,13 +12,20 @@ function PANEL:Init()
 	self.Properties = self.Divider:Add( "DProperties" )
 	self.Divider:SetTop( self.Properties )
 
-	self.ButtonsDivider = self.Divider:Add( "DHorizontalDivider" )
-	self.Divider:SetBottom( self.ButtonsDivider )
+	self.DividerButtons = self.Divider:Add( "DHorizontalDivider" )
+	self.Divider:SetBottom( self.DividerButtons )
 
-	local applyButton = self.ButtonsDivider:Add( "DButton" )
-	self.ButtonsDivider:SetLeft( applyButton )
-	self.applyButton = applyButton
-	applyButton:SetText( "Apply" )
+	local ButtonApply = self.DividerButtons:Add( "DButton" )
+	self.DividerButtons:SetLeft( ButtonApply )
+	self.ButtonApply = ButtonApply
+	ButtonApply:SetImage( "icon16/database_refresh.png" )
+	ButtonApply:SetText( "Apply Changes" )
+
+	local ButtonDelete = self.DividerButtons:Add( "DButton" )
+	self.DividerButtons:SetRight( ButtonDelete )
+	self.ButtonDelete = ButtonDelete
+	ButtonDelete:SetImage( "icon16/database_delete.png" )
+	ButtonDelete:SetText( "Delete Constraint" )
 
 	self.typeRestoreFuncs = {
 		boolean	= tobool,
@@ -36,26 +44,32 @@ function PANEL:PerformLayout( width, height )
 	self.Divider:SetBottomMin( 20 )
 	self.Divider:SetTopMin( height - 20 )
 	self.Divider:DoConstraints()
-	self.ButtonsDivider:SetLeftMin( width / 2 )
-	self.ButtonsDivider:SetRightMin( width / 2 )
+	self.DividerButtons:SetLeftMin( width / 2 )
+	self.DividerButtons:SetRightMin( width / 2 )
 
 end
 
--- codedData is nearly the same as constrData but uses integer keys to conserve order
-function PANEL:SetConstrData( codedData, args )
+-- codedData is nearly the same as constrData but partly uses integer keys to conserve order
+function PANEL:ShowConstr( codedData, args )
 
-	self.Properties:Init()
+	self.Properties:Clear()
 	self.constrData = {}
+	self.constrDataCache = {}
 
 	if not args then return end
 
-	self.constrData.Type		= codedData.Type
-	self.constrData.constrID	= codedData.constrID
+	local constrID		= codedData.constrID
+	local constrType	= codedData.Type
+	self.constrData.constrID	= constrID
+	self.constrData.Type		= constrType
+
+	if self.ConstraintBrowser then self.ConstraintBrowser:SelectConstrNode( constrID, constrType ) end
 
 	for i, arg in ipairs( args ) do
 
 		local row			= self.Properties:CreateRow( "Constraint Properties", arg )
 		local argValue		= codedData[i]
+		self.constrDataCache[arg] = argValue
 		local argType		= type( argValue )
 		local cacheString	= tostring( argValue )
 
@@ -78,13 +92,15 @@ function PANEL:SetConstrData( codedData, args )
 
 	end
 
-	if cType then
+	--[[
+	if constrType then
 
 		local row = self.Properties:CreateRow( "Constraint Information", "Type" )
 		row:Setup( "String", { readonly = true } )
 		row:SetValue( constrType )
 
 	end
+	]]
 
 end
 
@@ -96,11 +112,19 @@ function PANEL:GetConstrData()
 end
 
 
-function PANEL:GetApplyButton()
+function PANEL:GetButtonApply()
 
-	return self.applyButton
+	return self.ButtonApply
 
 end
+
+
+function PANEL:GetButtonDelete()
+
+	return self.ButtonDelete
+
+end
+
 
 
 derma.DefineControl( "DConstraintEditor", "", PANEL, "DPanel" )
