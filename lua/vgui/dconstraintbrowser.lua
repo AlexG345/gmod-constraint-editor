@@ -1,6 +1,8 @@
 
 local PANEL = {}
 
+print("ok")
+
 function PANEL:Init()
 
 	self.Divider = self:Add( "DHorizontalDivider" )

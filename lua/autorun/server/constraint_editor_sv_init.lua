@@ -246,8 +246,21 @@ function ConstraintEditor.DecodeConstrData( data )
 
 end
 
+
+-- Prevent some unsafe data manipulation
+function ConstraintEditor.SanitizeConstrData( constrData )
+	for k, v in pairs( constrData ) do
+		if type( v ) == "Entity" or type( v ) == "Player" then
+			constrData[k] = nil
+		end
+	end
+end
+
+
 -- Constraint editing / deletion happens here
-function ConstraintEditor.UpdateConstr( constr, newData, ply )
+function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
+
+	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
 
 	local data, desc = ConstraintEditor.GetConstrData( constr, true )
 	if not ( data and desc ) then return end
@@ -486,7 +499,7 @@ function ConstraintEditor.HandleNetRequests()
 			local constr = ConstraintEditor.Access( ply, newData.constrID )
 			if not constr then return end
 
-			ConstraintEditor.UpdateConstr( constr, newData, ply )
+			ConstraintEditor.UpdateConstr( constr, newData, ply, true )
 
 		end
 
