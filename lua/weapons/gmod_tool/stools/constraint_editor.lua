@@ -142,8 +142,6 @@ function TOOL:DrawHUD()
 	local newData = constrEditor.constrData
 	local argsOrder = constrEditor.argsOrder
 
-	print("o")
-
 	if not ( newData and argsOrder ) then return end
 
 	local function find( key )
@@ -152,7 +150,6 @@ function TOOL:DrawHUD()
 		return value ~= nil and value or cacheData[i] or cacheData[key]
 	end
 
-	print( find("Ent1"))
 	-- bad for booleans
 	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
 

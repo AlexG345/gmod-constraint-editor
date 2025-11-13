@@ -25,7 +25,6 @@ function PANEL:Init()
 
 		local ButtonApply = self.ListButtons1:Add( "DButton" )
 		self.ButtonApply = ButtonApply
-		print(self.ButtonApply)
 		ButtonApply:SetImage( "icon16/database_refresh.png" )
 		ButtonApply:SetText( "Apply Changes" )
 
