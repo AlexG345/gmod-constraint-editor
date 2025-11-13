@@ -9,7 +9,6 @@ local ADD_MENU_SURFACE_DATA = 5
 
 local REQ_BIT_COUNT = 3
 
-
 --------------------------------
 --    Constraint Accessing    --
 --------------------------------
@@ -257,20 +256,32 @@ function ConstraintEditor.SanitizeConstrData( constrData )
 end
 
 
--- Constraint editing / deletion happens here
-function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
+-- Tries to create a new constraint.
+function ConstraintEditor.CreateConstr( constr, constrData, ply )
 
-	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
+	local buildInfo = constr and constr.BuildDupeInfo
 
-	local data, desc = ConstraintEditor.GetConstrData( constr, true )
-	if not ( data and desc ) then return end
+	local _, desc = ConstraintEditor.GetConstrData( constr, true )
 
-	if newData.CEDelete then
-		ConstraintEditor.DeleteConstr( constr )
-		return
+	if buildInfo then
+		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
+		return ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
+	else
+		-- Uses normal duplicator. Has information loss (e.g Ent1 and Ent2's relative position is lost)
+		return desc.Func( unpack( constrData ) )
 	end
 
-	local updateNeeded	= false
+end
+
+
+-- Completes any value newData is missing based on data available in constr
+-- Returns true if the completed data is different than the data available in constr, false otherwise
+-- todo: add type check
+function ConstraintEditor.CompleteConstrData( constr, newData, ply )
+
+	local data, desc = ConstraintEditor.GetConstrData( constr, true )
+
+	local isChanged = false
 
 	for i, arg in ipairs( desc.Args ) do
 
@@ -282,31 +293,41 @@ function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
 
 		end
 
-		updateNeeded = updateNeeded or newData[i] ~= data[i]
+		isChanged = isChanged or newData[i] ~= data[i]
 
 	end
 
-	if not updateNeeded then return end
+	return isChanged
 
-	local buildInfo = constr.BuildDupeInfo
-	local newConstr
+end
 
-	if buildInfo then
-		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
-		newConstr = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, newData )
-	else
-		-- Uses normal duplicator (worse than advanced duplicator 2 BUT no addon needed)
-		newConstr = desc.Func( unpack( newData ) )
+
+
+-- Constraint editing / deletion happens here
+function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
+
+	if newData.CEDelete then
+		ConstraintEditor.DeleteConstr( constr )
+		return
 	end
 
-	if not ( newConstr and newConstr:IsValid() ) then return false end
+	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
 
-	undo.ReplaceEntity( constr, newConstr)
-	cleanup.ReplaceEntity( constr, newConstr )
+	local isChanged = ConstraintEditor.CompleteConstrData( constr, newData )
+	if not ( isChanged or newData.CEDuplicate ) then return end
+
+	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply )
+
+	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
 
 	-- Give permissions to edit the new constraint to all players that had access to the old one.
 	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
 	ConstraintEditor.TransferAccess( constr, newConstr )
+
+	if newData.CEDuplicate then return end
+
+	undo.ReplaceEntity( constr, newConstr)
+	cleanup.ReplaceEntity( constr, newConstr )
 
 	-- todo: check if players other than ply are editing the constr so that editor stays open for them
 	if ply then ConstraintEditor.SetEditedConstr( newConstr, ply ) end
@@ -382,7 +403,7 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 
 	local ok, Ent = pcall( factory, unpack( newData, 1, #newData ) )
 
-	if ply and not ( ok and Ent ) and ply then
+	if ply and not ( ok and Ent ) then
 		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint!" )
 	end
 

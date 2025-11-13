@@ -1,8 +1,6 @@
 
 local PANEL = {}
 
-print("ok")
-
 function PANEL:Init()
 
 	self.Divider = self:Add( "DHorizontalDivider" )
@@ -10,6 +8,7 @@ function PANEL:Init()
 	self.Divider:SetLeftWidth( 110 )
 	self.Divider:SetLeftMin( 70 )
 	self.Divider:SetRightMin( 195 )
+	self.Divider:SetDividerWidth( 3 )
 
 	self.Tree = self.Divider:Add( "DTree" )
 	self.Divider:SetLeft( self.Tree )
@@ -71,6 +70,14 @@ function PANEL:GetButtonDelete()
 	return self.ConstraintEditor:GetButtonDelete()
 
 end
+
+
+function PANEL:GetButtonDuplicate()
+
+	return self.ConstraintEditor:GetButtonDuplicate()
+
+end
+
 
 
 function PANEL:GetConstrData()

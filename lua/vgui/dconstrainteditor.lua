@@ -16,17 +16,33 @@ function PANEL:Init()
 	self.Divider:SetTop( self.Properties )
 
 
-	self.DividerButtons = self.Divider:Add( "DVerticalDivider" )
-	self.Divider:SetBottom( self.DividerButtons )
-	self.DividerButtons:SetDividerHeight( 1 )
+	self.DividerList = self.Divider:Add( "DHorizontalDivider" )
+	self.Divider:SetBottom( self.DividerList )
+	self.DividerList:SetDividerWidth( 1 )
 
+	self.ListButtons1 = self.DividerList:Add( "DListLayout" )
+	self.DividerList:SetLeft( self.ListButtons1 )
 
-	self.DividerButtons1 = self.DividerButtons:Add( "DHorizontalDivider" )
-	self.DividerButtons1:SetDividerWidth( 1 )
-	self.DividerButtons:SetTop( self.DividerButtons1 )
+		local ButtonApply = self.ListButtons1:Add( "DButton" )
+		self.ButtonApply = ButtonApply
+		print(self.ButtonApply)
+		ButtonApply:SetImage( "icon16/database_refresh.png" )
+		ButtonApply:SetText( "Apply Changes" )
 
-		local ButtonCopy = self.DividerButtons1:Add( "DButton" )
-		self.DividerButtons1:SetLeft( ButtonCopy )
+		local ButtonDuplicate = self.ListButtons1:Add( "DButton" )
+		self.ButtonDuplicate = ButtonDuplicate
+		ButtonDuplicate:SetImage( "icon16/application_double.png" )
+		ButtonDuplicate:SetText( "Duplicate Constraint" )
+
+		local ButtonDelete = self.ListButtons1:Add( "DButton" )
+		self.ButtonDelete = ButtonDelete
+		ButtonDelete:SetImage( "icon16/database_delete.png" )
+		ButtonDelete:SetText( "Remove Constraint" )
+
+	self.ListButtons2 = self.DividerList:Add( "DListLayout" )
+	self.DividerList:SetRight( self.ListButtons2 )
+
+		local ButtonCopy = self.ListButtons2:Add( "DButton" )
 		self.ButtonCopy = ButtonCopy
 		ButtonCopy:SetImage( "icon16/page_copy.png" )
 		ButtonCopy:SetText( "Copy all values" )
@@ -36,8 +52,7 @@ function PANEL:Init()
 			editor.ButtonPaste:SetEnabled( editor:CanPaste() )
 		end
 
-		local ButtonPaste = self.DividerButtons1:Add( "DButton" )
-		self.DividerButtons1:SetRight( ButtonPaste )
+		local ButtonPaste = self.ListButtons2:Add( "DButton" )
 		self.ButtonPaste = ButtonPaste
 		ButtonPaste:SetImage( "icon16/page_paste.png" )
 		ButtonPaste:SetText( "Paste all values" )
@@ -47,24 +62,6 @@ function PANEL:Init()
 		end
 
 		ButtonPaste:SetEnabled( false )
-
-
-	self.DividerButtons2 = self.DividerButtons:Add( "DHorizontalDivider" )
-	self.DividerButtons2:SetDividerWidth( 1 )
-	self.DividerButtons:SetBottom( self.DividerButtons2 )
-
-		local ButtonApply = self.DividerButtons2:Add( "DButton" )
-		self.DividerButtons2:SetLeft( ButtonApply )
-		self.ButtonApply = ButtonApply
-		ButtonApply:SetImage( "icon16/database_refresh.png" )
-		ButtonApply:SetText( "Apply Changes" )
-
-		local ButtonDelete = self.DividerButtons2:Add( "DButton" )
-		self.DividerButtons2:SetRight( ButtonDelete )
-		self.ButtonDelete = ButtonDelete
-		ButtonDelete:SetImage( "icon16/database_delete.png" )
-		ButtonDelete:SetText( "Delete Constraint" )
-
 
 	self.typeRestoreFuncs = {
 		boolean	= tobool,
@@ -81,24 +78,24 @@ function PANEL:Init()
 
 	self.rows = {}
 	self.args = {}
+	self.argsOrder = {}
+	self.reverseArgs = {}
 
 end
 
 
 function PANEL:PerformLayout( width, height )
 
-	local buttonHeightTotal = 50
+	local buttonHeightTotal = self.ButtonApply:GetTall() * 3
 	self.Divider:SetBottomMin( buttonHeightTotal )
 	self.Divider:SetTopMin( height - buttonHeightTotal )
 
-	self.DividerButtons:SetBottomMin( buttonHeightTotal / 2 )
-	self.DividerButtons:SetTopMin( buttonHeightTotal / 2 )
+	local leftWidth = width / 2
+
+	self.DividerList:SetLeftMin( leftWidth )
+	self.DividerList:SetRightMin( width - leftWidth )
 
 	self.Divider:DoConstraints()
-	self.DividerButtons1:SetLeftMin( width / 2 )
-	self.DividerButtons1:SetRightMin( width / 2 )
-	self.DividerButtons2:SetLeftMin( width / 2 )
-	self.DividerButtons2:SetRightMin( width / 2 )
 
 end
 
@@ -116,6 +113,7 @@ function PANEL:ShowConstr( codedData, args )
 	self.constrData.constrID	= constrID
 	self.constrData.Type		= constrType
 	self.args	= args
+	self.argsOrder = {}
 	self.rows	= {}
 
 	local editor = self
@@ -124,6 +122,7 @@ function PANEL:ShowConstr( codedData, args )
 
 	for i, argName in ipairs( args ) do
 
+		self.argsOrder[argName] = i
 		local row		= self.Properties:CreateRow( "Constraint Properties", argName )
 		self.rows[i]	= row
 
@@ -182,6 +181,14 @@ end
 function PANEL:GetButtonDelete()
 
 	return self.ButtonDelete
+
+end
+
+
+
+function PANEL:GetButtonDuplicate()
+
+	return self.ButtonDuplicate
 
 end
 

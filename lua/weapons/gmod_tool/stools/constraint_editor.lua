@@ -95,6 +95,9 @@ function TOOL.BuildCPanel( cPanel )
 
 	end
 
+
+	-- Could be simplified: use CEDelete for button apply too and remove CEDuplicate
+
 	local ButtonApply = constrBrowser:GetButtonApply()
 		function ButtonApply:DoClick()
 			ConstraintEditor.RequestSetConstrData( constrBrowser:GetConstrData() )
@@ -107,6 +110,17 @@ function TOOL.BuildCPanel( cPanel )
 			local data = {
 				constrID = constrData.constrID,
 				CEDelete = true
+			}
+			ConstraintEditor.RequestSetConstrData( data )
+		end
+
+	local ButtonDuplicate = constrBrowser:GetButtonDuplicate()
+		function ButtonDuplicate:DoClick()
+			local constrData = constrBrowser:GetConstrData()
+			if not istable( constrData ) then return end
+			local data = {
+				constrID = constrData.constrID,
+				CEDuplicate = true
 			}
 			ConstraintEditor.RequestSetConstrData( data )
 		end
@@ -126,14 +140,19 @@ function TOOL:DrawHUD()
 	local constrEditor = constrBrowser.ConstraintEditor
 	local cacheData = constrEditor.constrDataCache
 	local newData = constrEditor.constrData
+	local argsOrder = constrEditor.argsOrder
 
-	if not newData then return end
+	print("o")
+
+	if not ( newData and argsOrder ) then return end
 
 	local function find( key )
-		local value = newData[key]
-		return value ~= nil and value or cacheData[key]
+		local i = argsOrder[key]
+		local value = newData[i] or newData[key]
+		return value ~= nil and value or cacheData[i] or cacheData[key]
 	end
 
+	print( find("Ent1"))
 	-- bad for booleans
 	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
 
