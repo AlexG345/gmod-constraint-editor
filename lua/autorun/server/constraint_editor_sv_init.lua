@@ -263,13 +263,19 @@ function ConstraintEditor.CreateConstr( constr, constrData, ply )
 
 	local _, desc = ConstraintEditor.GetConstrData( constr, true )
 
+	local newConstr
+
 	if buildInfo then
 		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
-		return ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
+		newConstr = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
 	else
 		-- Uses normal duplicator. Has information loss (e.g Ent1 and Ent2's relative position is lost)
-		return desc.Func( unpack( constrData ) )
+		newConstr = desc.Func( unpack( constrData ) )
 	end
+
+	if ply and isentity( newConstr ) and newConstr:IsValid() then ply:AddCount( "ropeconstraints", newConstr ) end
+
+	return newConstr
 
 end
 
@@ -316,9 +322,13 @@ function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
 	local isChanged = ConstraintEditor.CompleteConstrData( constr, newData )
 	if not ( isChanged or newData.CEDuplicate ) then return end
 
+	if newData.CEDuplicate and ply and not ply:CheckLimit( "ropeconstraints" ) then return end
+
 	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
+
+
 
 	-- Give permissions to edit the new constraint to all players that had access to the old one.
 	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor

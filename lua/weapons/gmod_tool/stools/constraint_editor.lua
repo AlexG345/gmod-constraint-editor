@@ -81,7 +81,7 @@ function TOOL.BuildCPanel( cPanel )
 
 	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
 		cPanel:AddItem( constrBrowser )
-		constrBrowser:SetSize( 250, 320 )
+		constrBrowser:SetSize( 250, 400 )
 		constrBrowser:SortConstrTypes()
 	cPanel.constrBrowser = constrBrowser
 
@@ -130,7 +130,7 @@ function TOOL.BuildCPanel( cPanel )
 
 end
 
-
+-- need to check if constraint still exists somehow
 function TOOL:DrawHUD()
 
 	--local ply = self:GetOwner()
@@ -153,7 +153,7 @@ function TOOL:DrawHUD()
 	-- bad for booleans
 	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
 
-	if Ent1 == NULL or Ent2 == NULL or not ( Ent1 and Ent2 ) then return end
+	if not ( IsValid( Ent1 ) and IsValid( Ent2 ) ) then return end
 
 	if IsValid( Ent1 ) then
 		pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
