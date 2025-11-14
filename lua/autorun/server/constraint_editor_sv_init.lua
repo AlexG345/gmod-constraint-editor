@@ -1,13 +1,17 @@
 util.AddNetworkString( "constraint_editor_net" )
 
-local UPDATE_CONSTR = 0
-local SET_MENU_SURFACE_DATA = 1
-local SET_MENU_DEEP_DATA = 2
-local GET_MENU_DEEP_DATA = 3
-local REMOVE_MENU_CONSTR = 4
-local ADD_MENU_SURFACE_DATA = 5
+local REMOVE_CONSTR			= 0
+local UPDATE_CONSTR			= 1
+local DUPLIC_CONSTR			= 2
+local SET_MENU_SURFACE_DATA	= 3
+local SET_MENU_DEEP_DATA	= 4
+local GET_MENU_DEEP_DATA	= 5
+local REMOVE_MENU_CONSTR	= 6
+local ADD_MENU_SURFACE_DATA	= 7
+local GET_ALL_CONSTRS		= 8
 
-local REQ_BIT_COUNT = 3
+local BIT_COUNT_TAG			= 3
+local BIT_COUNT_CONSTR_ID	= 24 -- creation ids go up to 10 million
 
 --------------------------------
 --    Constraint Accessing    --
@@ -308,33 +312,25 @@ function ConstraintEditor.CompleteConstrData( constr, newData, ply )
 end
 
 
-
 -- Constraint editing / deletion happens here
-function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize )
+function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize, duplicate )
 
-	if newData.CEDelete then
-		ConstraintEditor.DeleteConstr( constr )
-		return
-	end
+	if duplicate and ply and not ply:CheckLimit( "ropeconstraints" ) then return end
 
 	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
 
 	local isChanged = ConstraintEditor.CompleteConstrData( constr, newData )
-	if not ( isChanged or newData.CEDuplicate ) then return end
-
-	if newData.CEDuplicate and ply and not ply:CheckLimit( "ropeconstraints" ) then return end
+	if not ( isChanged or duplicate ) then return end
 
 	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
 
-
-
 	-- Give permissions to edit the new constraint to all players that had access to the old one.
 	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
 	ConstraintEditor.TransferAccess( constr, newConstr )
 
-	if newData.CEDuplicate then return end
+	if duplicate then return end
 
 	undo.ReplaceEntity( constr, newConstr)
 	cleanup.ReplaceEntity( constr, newConstr )
@@ -462,17 +458,17 @@ end
 --------------------------------
 
 
-function ConstraintEditor.SendDataToClient( action, data, ply )
+function ConstraintEditor.SendDataToClient( tag, data, ply )
 
-	if not isnumber( action ) then return end
+	if not isnumber( tag ) then return end
 	if not isentity( ply ) and ply:IsPlayer() then return end
 
 	net.Start( "constraint_editor_net" )
-		net.WriteUInt( action, REQ_BIT_COUNT )
+		net.WriteUInt( tag, BIT_COUNT_TAG )
 		if istable( data ) then
 			net.WriteTable( data )
 		else
-			net.WriteUInt( data, 24 ) -- for constrID
+			net.WriteUInt( data, BIT_COUNT_CONSTR_ID )
 		end
 	net.Send( ply )
 
@@ -486,6 +482,7 @@ function ConstraintEditor.SetEditedEntity( ent, ply )
 	ConstraintEditor.EditedEnts[ply] = ent
 
 	local surfaceConstrData, constrs = ConstraintEditor.GetSurfaceConstrData( ent )
+
 	for constrID, constr in pairs( constrs ) do
 		ConstraintEditor.SetAccess( ply, constrID, true, constr )
 	end
@@ -508,29 +505,29 @@ function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, ply )
 
-		local request = net.ReadUInt( REQ_BIT_COUNT )
+		local tag		= net.ReadUInt( BIT_COUNT_TAG )
+		local constrID	= net.ReadUInt( BIT_COUNT_CONSTR_ID )
+		local constr	= ConstraintEditor.Access( ply, constrID )
 
-		if request == GET_MENU_DEEP_DATA then
+		if not constr then ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply ) return end
+		if not IsValid ( constr ) then ConstraintEditor.ForgetConstr( constrID ) return end
 
-			local constrID = net.ReadUInt( 24 )
-
-			local constr = ConstraintEditor.Access( ply, constrID )
-
-			if not ( constr or IsValid( constr ) ) then
-				ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply )
-				ConstraintEditor.ForgetConstr( constrID )
-			end
+		if tag == GET_MENU_DEEP_DATA then
 
 			ConstraintEditor.SetEditedConstr( constr, ply )
 
-		elseif request == UPDATE_CONSTR then
+		elseif tag == REMOVE_CONSTR then
+
+			ConstraintEditor.DeleteConstr( constr )
+
+		elseif tag == UPDATE_CONSTR then
 
 			local newData = net.ReadTable()
-
-			local constr = ConstraintEditor.Access( ply, newData.constrID )
-			if not constr then return end
-
 			ConstraintEditor.UpdateConstr( constr, newData, ply, true )
+
+		elseif tag == DUPLIC_CONSTR then
+
+			ConstraintEditor.UpdateConstr( constr, {}, ply, true, true )
 
 		end
 

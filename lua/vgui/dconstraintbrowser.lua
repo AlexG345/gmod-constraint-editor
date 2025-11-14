@@ -11,6 +11,13 @@ function PANEL:Init()
 	self.Divider:SetDividerWidth( 3 )
 
 	self.Tree = self.Divider:Add( "DTree" )
+
+	function self.Tree:DoClick( node )
+		if node.constrID then
+			ConstraintEditor.RequestConstrData( node.constrID )
+		end
+	end
+
 	self.Divider:SetLeft( self.Tree )
 
 	self.ConstraintEditor = self.Divider:Add( "DConstraintEditor" )
@@ -54,35 +61,6 @@ function PANEL:Init()
 	}
 
 	self.defaultIcon	= "icon16/cog_add.png"
-
-end
-
-
-function PANEL:GetButtonApply()
-
-	return self.ConstraintEditor:GetButtonApply()
-
-end
-
-
-function PANEL:GetButtonDelete()
-
-	return self.ConstraintEditor:GetButtonDelete()
-
-end
-
-
-function PANEL:GetButtonDuplicate()
-
-	return self.ConstraintEditor:GetButtonDuplicate()
-
-end
-
-
-
-function PANEL:GetConstrData()
-
-	return self.ConstraintEditor:GetConstrData()
 
 end
 
@@ -221,9 +199,12 @@ end
 
 function PANEL:RemoveConstr( constrID )
 
-	local constrData = self:GetConstrData()
-	if constrData and constrData.constrID == constrID then
-		self.ConstraintEditor:ShowConstr() -- clear
+	local editor = self.ConstraintEditor
+	if not editor then return end
+
+	local constrData = editor:GetConstrData()
+	if constrData and editor.constrID == constrID then
+		editor:ShowConstr() -- clear
 	end
 
 	local constrNode = self:FindConstrNode( constrID )

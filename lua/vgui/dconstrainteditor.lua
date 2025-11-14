@@ -1,5 +1,9 @@
 local PANEL = {}
 
+local REMOVE_CONSTR			= 0
+local UPDATE_CONSTR			= 1
+local DUPLIC_CONSTR			= 2
+
 function PANEL:Init()
 
 	local editor = self
@@ -28,15 +32,30 @@ function PANEL:Init()
 		ButtonApply:SetImage( "icon16/database_refresh.png" )
 		ButtonApply:SetText( "Apply Changes" )
 
+		function ButtonApply:DoClick()
+			ConstraintEditor.SendDataToServer( UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
+		end
+
+
 		local ButtonDuplicate = self.ListButtons1:Add( "DButton" )
 		self.ButtonDuplicate = ButtonDuplicate
 		ButtonDuplicate:SetImage( "icon16/application_double.png" )
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
+		function ButtonDuplicate:DoClick()
+			ConstraintEditor.SendDataToServer( DUPLIC_CONSTR, editor.constrID )
+		end
+
+
 		local ButtonDelete = self.ListButtons1:Add( "DButton" )
 		self.ButtonDelete = ButtonDelete
 		ButtonDelete:SetImage( "icon16/database_delete.png" )
 		ButtonDelete:SetText( "Remove Constraint" )
+
+		function ButtonDelete:DoClick()
+			ConstraintEditor.SendDataToServer( REMOVE_CONSTR, editor.constrID )
+		end
+
 
 	self.ListButtons2 = self.DividerList:Add( "DListLayout" )
 	self.DividerList:SetRight( self.ListButtons2 )
@@ -109,11 +128,11 @@ function PANEL:ShowConstr( codedData, args )
 
 	local constrID		= codedData.constrID
 	local constrType	= codedData.Type
-	self.constrData.constrID	= constrID
+	self.constrID		= constrID
 	self.constrData.Type		= constrType
-	self.args	= args
-	self.argsOrder = {}
-	self.rows	= {}
+	self.args		= args
+	self.argsOrder	= {}
+	self.rows		= {}
 
 	local editor = self
 
@@ -170,35 +189,11 @@ function PANEL:GetConstrData()
 end
 
 
-function PANEL:GetButtonApply()
-
-	return self.ButtonApply
-
-end
-
-
-function PANEL:GetButtonDelete()
-
-	return self.ButtonDelete
-
-end
-
-
-
-function PANEL:GetButtonDuplicate()
-
-	return self.ButtonDuplicate
-
-end
-
-
 function PANEL:CanPaste()
 
 	return self.constrData and self.constrData.Type and self.constrData.Type == self.copiedConstrData.Type
 
 end
-
-
 
 
 function PANEL:CopyFullData()
@@ -236,7 +231,7 @@ function PANEL:TryApplyData( constrData )
 
 	end
 
-	self.Properties:InvalidateChildren( true )
+	--self.Properties:InvalidateChildren( true )
 
 end
 

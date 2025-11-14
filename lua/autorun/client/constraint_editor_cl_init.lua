@@ -1,11 +1,16 @@
-local UPDATE_CONSTR = 0
-local SET_MENU_SURFACE_DATA = 1
-local SET_MENU_DEEP_DATA = 2
-local GET_MENU_DEEP_DATA = 3
-local REMOVE_MENU_CONSTR = 4
-local ADD_MENU_SURFACE_DATA = 5
+local REMOVE_CONSTR			= 0
+local UPDATE_CONSTR			= 1
+local DUPLIC_CONSTR			= 2
+local SET_MENU_SURFACE_DATA	= 3
+local SET_MENU_DEEP_DATA	= 4
+local GET_MENU_DEEP_DATA	= 5
+local REMOVE_MENU_CONSTR	= 6
+local ADD_MENU_SURFACE_DATA	= 7
+local GET_ALL_CONSTRS		= 8
 
-local REQ_BIT_COUNT = 3
+local BIT_COUNT_TAG			= 3
+local BIT_COUNT_CONSTR_ID	= 24 -- creation ids go up to 10 million
+
 
 
 function ConstraintEditor.GetTestTable( constrID )
@@ -24,27 +29,27 @@ function ConstraintEditor.HandleNetRequests( mode )
 
 	net.Receive( "constraint_editor_net", function( len, _ )
 
-		local request	= net.ReadUInt( REQ_BIT_COUNT )
+		local tag	= net.ReadUInt( BIT_COUNT_TAG )
 
 		local cPanel		= controlpanel.Get( mode )
 		local constrBrowser	= cPanel.constrBrowser
 		if not IsValid( constrBrowser ) then return end
 
-		if request == SET_MENU_SURFACE_DATA then
+		if tag == SET_MENU_SURFACE_DATA then
 
 			constrBrowser:SetConstrs( net.ReadTable() )
 
-		elseif request == SET_MENU_DEEP_DATA then
+		elseif tag == SET_MENU_DEEP_DATA then
 
 			local data = net.ReadTable()
 			constrBrowser:ShowConstr( data[1], data[2] )
 
-		elseif request == REMOVE_MENU_CONSTR then
+		elseif tag == REMOVE_MENU_CONSTR then
 
 			local constrID = net.ReadUInt( 24 )
 			constrBrowser:RemoveConstr( constrID )
 
-		elseif request == ADD_MENU_SURFACE_DATA then
+		elseif tag == ADD_MENU_SURFACE_DATA then
 
 			constrBrowser:AddConstrs( net.ReadTable() )
 
@@ -56,22 +61,18 @@ end
 
 
 function ConstraintEditor.RequestConstrData( constrID )
-
-	if not isnumber( constrID ) then return end
-	net.Start( "constraint_editor_net" )
-		net.WriteUInt( GET_MENU_DEEP_DATA, REQ_BIT_COUNT )
-		net.WriteUInt( constrID, 24 ) -- creation IDs go up to 10 million
-	net.SendToServer()
-
+	ConstraintEditor.SendDataToServer( GET_MENU_DEEP_DATA, constrID )
 end
 
--- Can recreate constraint (only if client has permission serverside)
-function ConstraintEditor.RequestSetConstrData( data )
 
-	if not istable( data ) then return end
+function ConstraintEditor.SendDataToServer( tag, constrID, data )
+
+	if not isnumber( tag ) then return end
+
 	net.Start( "constraint_editor_net" )
-		net.WriteUInt( UPDATE_CONSTR, REQ_BIT_COUNT )
-		net.WriteTable( data )
+		net.WriteUInt( tag, BIT_COUNT_TAG )
+		if isnumber( constrID ) then net.WriteUInt( constrID, BIT_COUNT_CONSTR_ID ) end
+		if istable( data ) then net.WriteTable( data ) end
 	net.SendToServer()
 
 end

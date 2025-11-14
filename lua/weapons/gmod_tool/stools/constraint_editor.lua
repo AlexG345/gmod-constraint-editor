@@ -85,49 +85,6 @@ function TOOL.BuildCPanel( cPanel )
 		constrBrowser:SortConstrTypes()
 	cPanel.constrBrowser = constrBrowser
 
-	function constrBrowser.Tree:DoClick( node )
-
-		if node.constrID then
-
-			ConstraintEditor.RequestConstrData( node.constrID )
-
-		end
-
-	end
-
-
-	-- Could be simplified: use CEDelete for button apply too and remove CEDuplicate
-
-	local ButtonApply = constrBrowser:GetButtonApply()
-		function ButtonApply:DoClick()
-			ConstraintEditor.RequestSetConstrData( constrBrowser:GetConstrData() )
-		end
-
-	local ButtonDelete = constrBrowser:GetButtonDelete()
-		function ButtonDelete:DoClick()
-			local constrData = constrBrowser:GetConstrData()
-			if not istable( constrData ) then return end
-			local data = {
-				constrID = constrData.constrID,
-				CEDelete = true
-			}
-			ConstraintEditor.RequestSetConstrData( data )
-		end
-
-	local ButtonDuplicate = constrBrowser:GetButtonDuplicate()
-		function ButtonDuplicate:DoClick()
-			local constrData = constrBrowser:GetConstrData()
-			if not istable( constrData ) then return end
-			local data = {
-				constrID = constrData.constrID,
-				CEDuplicate = true
-			}
-			ConstraintEditor.RequestSetConstrData( data )
-		end
-
-
-	t, l = nil, nil
-
 end
 
 -- need to check if constraint still exists somehow
