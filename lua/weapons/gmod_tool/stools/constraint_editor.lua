@@ -110,7 +110,7 @@ function TOOL:DrawHUD()
 	-- bad for booleans
 	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
 
-	if not ( IsValid( Ent1 ) and IsValid( Ent2 ) ) then return end
+	if not ( isentity( Ent1 ) and isentity( Ent2 ) ) then return end
 
 	if IsValid( Ent1 ) then
 		pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
