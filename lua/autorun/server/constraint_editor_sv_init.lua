@@ -157,6 +157,8 @@ end
 
 function ConstraintEditor.SetEditedEntity( ent, ply )
 
+	if isentity( ent ) and ent:IsWorld() and not game.SinglePlayer() then return false end
+
 	if ent ~= NULL and not hook.Run( "CanTool", ply, { Entity = ent }, mode ) then return end
 
 	ConstraintEditor.ClearAccess( ply )
@@ -494,7 +496,7 @@ end
 function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 
 	if not isnumber( tag ) then return end
-	if not isentity( ply ) and ply:IsPlayer() then return end
+	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
 
 	net.Start( "constraint_editor_net" )
 		net.WriteUInt( tag, BIT_COUNT_TAG )
@@ -510,7 +512,6 @@ function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 end
 
 
-
 function ConstraintEditor.SetEditedConstr( constr, ply )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr, true )
@@ -520,10 +521,13 @@ function ConstraintEditor.SetEditedConstr( constr, ply )
 end
 
 
-function ConstraintEditor.GetLeftClickInfo( ent, ply )
-
+function ConstraintEditor.LeftClick( ent, ply )
 	ConstraintEditor.SendDataToClient( NT.LEFT_CLICK, ent, ply )
+end
 
+
+function ConstraintEditor.RightClick( ply )
+	ConstraintEditor.SendDataToClient( NT.RIGHT_CLICK, nil, ply )
 end
 
 
@@ -532,7 +536,7 @@ function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, ply )
 
-		local tag		= net.ReadUInt( BIT_COUNT_TAG )
+		local tag = net.ReadUInt( BIT_COUNT_TAG )
 
 		if tag == NT.SET_EDITED_ENTITY then
 

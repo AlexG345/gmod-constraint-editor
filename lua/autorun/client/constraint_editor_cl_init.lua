@@ -40,6 +40,16 @@ function ConstraintEditor.HandleNetRequests( mode )
 				ConstraintEditor.RequestConstrData( hCID )
 			end
 
+		elseif tag == NT.RIGHT_CLICK then
+
+			print("yes")
+			local hCID = ConstraintEditor.HoveredConstrID
+			if not hCID or hCID == -1 then
+				ConstraintEditor.SetEditedEntity( NULL )
+			else
+				ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, hCID )
+			end
+
 		elseif tag == NT.SET_SHOWN_CONSTRS then
 
 			local data = net.ReadTable() or {}

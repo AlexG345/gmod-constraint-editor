@@ -35,8 +35,8 @@ if CLIENT then
 	l( "name", TOOL.Name )
 	l( "desc", "Edit any constraint." )
 	l( "0" )
-	l( "left", "Edit an entity's constraints or a constraint" )
-	l( "right", "Unselect the edited entity" )
+	l( "left", "Edit an entity's constraints or select a constraint" )
+	l( "right", "Unselect the edited entity or DELETE a constraint" )
 	l( "reload" )
 
 	t, l = nil, nil
@@ -46,12 +46,9 @@ end
 
 function TOOL:LeftClick( trace )
 
-	local ent = trace.Entity
-	if not ( ent:IsValid() or game.SinglePlayer() and ent:IsWorld() ) then return false end
-
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.GetLeftClickInfo( ent, self:GetOwner() )
+		ConstraintEditor.LeftClick( trace.Entity, self:GetOwner() )
 	end
 
 	return true
@@ -61,11 +58,10 @@ end
 
 function TOOL:RightClick( trace )
 
-	if CLIENT then return true end
-
-	ConstraintEditor.TryCleanupTables()
-
-	ConstraintEditor.SetEditedEntity( NULL, self:GetOwner() )
+	if SERVER then
+		ConstraintEditor.TryCleanupTables()
+		ConstraintEditor.RightClick( self:GetOwner() )
+	end
 
 	return true
 
