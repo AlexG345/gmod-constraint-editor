@@ -3,12 +3,21 @@ local PANEL = {}
 
 function PANEL:Init()
 
+	self.Divider = self:Add( "DVerticalDivider" )
+	self.Divider:Dock( FILL )
+	self.Divider:SetTopHeight( 240 )
+	self.Divider:SetTopMin( 100 )
+	self.Divider:SetBottomMin( 300 )
+	self.Divider:SetDividerHeight( 3 )
+
+	--[[
 	self.Divider = self:Add( "DHorizontalDivider" )
 	self.Divider:Dock( FILL )
 	self.Divider:SetLeftWidth( 110 )
 	self.Divider:SetLeftMin( 70 )
 	self.Divider:SetRightMin( 195 )
 	self.Divider:SetDividerWidth( 3 )
+	--]]
 
 	self.Tree = self.Divider:Add( "DTree" )
 
@@ -18,10 +27,13 @@ function PANEL:Init()
 		end
 	end
 
-	self.Divider:SetLeft( self.Tree )
+	-- self.Divider:SetLeft( self.Tree )
+	self.Divider:SetTop( self.Tree )
 
 	self.ConstraintEditor = self.Divider:Add( "DConstraintEditor" )
-	self.Divider:SetRight( self.ConstraintEditor )
+
+	--self.Divider:SetRight( self.ConstraintEditor )
+	self.Divider:SetBottom( self.ConstraintEditor )
 
 	self.ConstraintEditor.ConstraintBrowser = self
 
@@ -163,15 +175,13 @@ function PANEL:AddConstrs( surfaceConstrData )
 
 	if not istable( surfaceConstrData ) then return end
 
-	for constrType, constrIDs in pairs( surfaceConstrData ) do
+	for constrType, constrData in pairs( surfaceConstrData ) do
 
 		local data = self:AddConstrType( constrType )
+		local constrTypeNode = data.panel
 
-		for _, constrID in ipairs( constrIDs ) do
-
-			local node = data.panel:AddNode( ( "[%s]" ):format( constrID ), "icon16/application_view_columns.png" )
-			node.constrID = constrID
-
+		for constrID, _ in pairs( constrData ) do
+			self:AddConstrToNode( constrTypeNode, constrID )
 		end
 
 	end
@@ -181,9 +191,24 @@ function PANEL:AddConstrs( surfaceConstrData )
 end
 
 
+function PANEL:AddConstrToNode( constrTypeNode, constrID )
+
+	local node = constrTypeNode:AddNode( ( "[%s]" ):format( constrID ), "icon16/application_view_columns.png" )
+	node.constrID = constrID
+
+end
+
+
 function PANEL:SetConstrs( surfaceConstrData )
 
 	self:Clear()
+	self:ShowConstr()
+	--[[
+	if table.IsEmpty( surfaceConstrData ) then
+		self:ShowConstr()
+		return
+	end
+	]]
 	self:AddConstrs( surfaceConstrData )
 
 end
@@ -244,6 +269,8 @@ function PANEL:SelectConstrNode( constrID, constrType )
 	end
 
 	if not constrNode then return end
+
+	constrNode:ExpandTo( true )
 
 	self.Tree:SetSelectedItem( constrNode )
 

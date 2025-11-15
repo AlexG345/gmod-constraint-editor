@@ -16,7 +16,8 @@ if CLIENT then
 	TOOL.Name		= "Constraint Editor"
 
 	TOOL.Information = {
-		{ name = "left" }
+		{ name = "left" },
+		{ name = "right" }
 	}
 
 	TOOL.ClientConVar = {
@@ -34,8 +35,8 @@ if CLIENT then
 	l( "name", TOOL.Name )
 	l( "desc", "Edit any constraint." )
 	l( "0" )
-	l( "left", "Edit an entity's constraints" )
-	l( "right" )
+	l( "left", "Edit an entity's constraints or a constraint" )
+	l( "right", "Unselect the edited entity" )
 	l( "reload" )
 
 	t, l = nil, nil
@@ -45,25 +46,39 @@ end
 
 function TOOL:LeftClick( trace )
 
-	local sp = game.SinglePlayer()
 	local ent = trace.Entity
-	if not ( ent:IsValid() or sp and ent:IsWorld() ) then return false end
+	if not ( ent:IsValid() or game.SinglePlayer() and ent:IsWorld() ) then return false end
 
-	if CLIENT then return true end
-
-	ConstraintEditor.TryCleanupTables()
-
-	ConstraintEditor.SetEditedEntity( ent, self:GetOwner() )
+	if SERVER then
+		ConstraintEditor.TryCleanupTables()
+		ConstraintEditor.GetLeftClickInfo( ent, self:GetOwner() )
+	end
 
 	return true
 
 end
 
 
+function TOOL:RightClick( trace )
+
+	if CLIENT then return true end
+
+	ConstraintEditor.TryCleanupTables()
+
+	ConstraintEditor.SetEditedEntity( NULL, self:GetOwner() )
+
+	return true
+
+end
+
+-- apply changes?
+-- function TOOL:Reload() end
+
+
 ConstraintEditor.HandleNetRequests( mode )
 
 
-local conVars = CLIENT and TOOL:BuildConVarList() or nil
+--local conVars = CLIENT and TOOL:BuildConVarList() or nil
 
 function TOOL.BuildCPanel( cPanel )
 
@@ -75,13 +90,13 @@ function TOOL.BuildCPanel( cPanel )
 		return language.GetPhrase( a[1] .. a[2] )
 	end
 
-	cPanel:ToolPresets( mode, conVars )
+	--cPanel:ToolPresets( mode, conVars )
 
 	cPanel:Help( l( "desc" ) )
 
 	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
 		cPanel:AddItem( constrBrowser )
-		constrBrowser:SetSize( 250, 400 )
+		constrBrowser:SetSize( 250, 650 )
 		constrBrowser:SortConstrTypes()
 	cPanel.constrBrowser = constrBrowser
 
@@ -90,72 +105,129 @@ end
 -- need to check if constraint still exists somehow
 function TOOL:DrawHUD()
 
-	--local ply = self:GetOwner()
-
-	local constrBrowser = controlpanel.Get( mode ).constrBrowser
-	if not constrBrowser then return end
-	local constrEditor = constrBrowser.ConstraintEditor
-	local cacheData = constrEditor.constrDataCache
-	local newData = constrEditor.constrData
-	local argsOrder = constrEditor.argsOrder
-
-	if not ( newData and argsOrder ) then return end
-
-	local function find( key )
-		local i = argsOrder[key]
-		local value = newData[i] or newData[key]
-		return value ~= nil and value or cacheData[i] or cacheData[key]
-	end
-
-	-- bad for booleans
-	local LPos1, LPos2, Ent1, Ent2, constrType = find( "LPos1" ) or find( "LPos" ), find( "LPos2" ) or find( "LPos4" ), find( "Ent1" ), find( "Ent2" ) or find( "Ent4" ), find( "Type" )
-
-	if not ( isentity( Ent1 ) and isentity( Ent2 ) ) then return end
-
-	if IsValid( Ent1 ) then
-		pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
-	else
-		pos1 = LPos1 or LPos2
-	end
-
-	if IsValid( Ent2 ) then
-		pos2 = LPos2 and Ent2:LocalToWorld( LPos2 ) or Ent2:GetPos()
-	else
-		pos2 = LPos2 or LPos1
-	end
-
-	local positions = {}
-	table.insert( positions, pos1 )
-	table.insert( positions, find( "WPos2" ) )
-	table.insert( positions, find( "WPos3" ) )
-	table.insert( positions, pos2 )
-
-	cam.Start3D()
-
-	local beamcolor = Color( 0, 200, 0, 255 )
-	render.SetColorMaterial()
-	render.StartBeam( #positions )
-	for _, pos in ipairs( positions ) do
-		render.AddBeam( pos, 1, 0, beamcolor )
-	end
-	render.EndBeam()
-
-	cam.End3D()
-
 	local bordersize	= 4
 	local boxcolor		= Color( 0, 0, 0, 200 )
-	local textcolor		= color_white
-	local index			= math.floor(#positions / 2)
-	local textPos		= ( ( positions[index] + positions[index + 1] ) / 2 ):ToScreen()
-	local font			= "DermaDefault"
+	local color_green	= Color( 40, 250, 40 )
+	local color_dgreen	= Color( 20, 200, 90 )
+	local color_blue	= Color( 70, 200, 255 )
+	local font1		= "DermaDefault"
+	local font2		= "DermaDefaultBold"
+	local font3		= "CreditsText"
+	local font4		= "Trebuchet24"
+	local overlaps		= {}
+	local textDatas		= {}
 
-	if textPos.visible then draw.WordBox( bordersize, textPos.x, textPos.y, constrType, font, boxcolor, textcolor, TEXT_ALIGN_CENTER, TEXT_ALIGN_BOTTOM ) end
+	local canHover		= true
+	ConstraintEditor.HoveredConstrID = -1
 
-	for _, data in ipairs( { { ent = Ent1, pos = pos1 }, { ent = Ent2, pos = pos2 } } ) do
-		if data.ent:IsWorld() then
-			textPos = ( data.pos ):ToScreen()
-			draw.WordBox( bordersize, textPos.x, textPos.y, "[World]", font, boxcolor, textcolor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+	local cPanel = controlpanel.Get( mode )
+	local constrEditor = cPanel and cPanel.constrBrowser and cPanel.constrBrowser.ConstraintEditor
+	local editedConstrID = constrEditor and constrEditor.constrID or -1
+
+	surface.SetFont( font1 )
+
+	for constrType, constrDatas in pairs( ConstraintEditor.Constrs ) do
+
+		for constrID, constrData in pairs( constrDatas ) do
+
+			local Ent1, Ent2, LPos1, LPos2, WPos2, WPos3 = unpack( constrData )
+
+			if not ( isentity( Ent1 ) and isentity( Ent2 ) ) then return end
+			if Ent1 == NULL or Ent2 == NULL then return end
+
+			local pos1, pos2
+
+			if IsValid( Ent1 ) then
+				pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
+			else
+				pos1 = LPos1 or LPos2
+			end
+
+			if IsValid( Ent2 ) then
+				pos2 = LPos2 and Ent2:LocalToWorld( LPos2 ) or Ent2:GetPos()
+			else
+				pos2 = LPos2 or LPos1 or pos1 - 100 * vector_up
+			end
+
+			local positions = {}
+			table.insert( positions, pos1 )
+			table.insert( positions, WPos2 )
+			table.insert( positions, WPos3 )
+			table.insert( positions, pos2 )
+
+			local isEdited = editedConstrID > 0 and constrID == editedConstrID
+			local isHovered	= false
+			local index		= math.floor( #positions / 2 )
+			local midPos	= ( positions[index] + positions[index + 1] ) / 2
+			local textPos	= midPos:ToScreen()
+
+			local id = string.format("%s_%s_%s", math.floor( midPos.x ), math.floor( midPos.y ), math.floor( midPos.z ) )
+			overlaps[id] = overlaps[id] and overlaps[id] + 1 or 0
+			textPos.y = textPos.y + overlaps[id] * 20
+
+			if textPos.visible then
+
+				local text = constrType .. ( " [" .. constrID or "?" ) .. "]"
+
+				local w, h = surface.GetTextSize( text )
+				w, h = w + bordersize * 2, h + bordersize * 2
+
+				local cursorPos = {}
+				cursorPos.x, cursorPos.y = input.GetCursorPos()
+
+				isHovered = canHover and math.abs( cursorPos.x - textPos.x ) * 2 < w and math.abs( cursorPos.y - textPos.y ) * 2 < h
+
+				if isHovered then
+					canHover = false
+					ConstraintEditor.HoveredConstrID = constrID
+				end
+
+				local font = ( isEdited and isHovered and font4 ) or isEdited and font3 or isHovered and font2 or font1
+				textDatas[constrID] = { { textPos, text, font, isEdited and color_blue } }
+
+				for _, data in ipairs( { { ent = Ent1, pos = pos1 }, { ent = Ent2, pos = pos2 } } ) do
+					if data.ent:IsWorld() then
+						textPos = data.pos:ToScreen()
+						textDatas[constrID][2] = { textPos, "[World]", font1 }
+					end
+				end
+
+			end
+
+			cam.Start3D()
+
+			local beamWidth = isHovered and 2 or 0.9
+			if isEdited then beamWidth = beamWidth + 0.4 end
+			local beamColor = isEdited and color_white or  isHovered and color_green or color_dgreen
+
+			render.SetColorMaterial()
+			render.StartBeam( #positions )
+			for _, pos in ipairs( positions ) do
+				render.AddBeam( pos, beamWidth, 0, beamColor )
+			end
+			render.EndBeam()
+
+			cam.End3D()
+
 		end
+
 	end
 
+	for constrID, textData in pairs( textDatas ) do
+
+		local textColor		= color_white
+		local constrTData	= textData[1]
+		local entTData		= textData[2]
+
+		if constrTData then
+			local textPos, text, font, col = unpack( constrTData )
+			draw.WordBox( bordersize, textPos.x, textPos.y, text, font, boxcolor, col or textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		end
+
+		if entTData then
+			local textPos, text, font = unpack( entTData )
+			draw.WordBox( bordersize, textPos.x, textPos.y, text, font, boxcolor, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		end
+
+	end
 end

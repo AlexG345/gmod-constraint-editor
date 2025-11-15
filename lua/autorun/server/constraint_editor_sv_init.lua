@@ -1,17 +1,8 @@
 util.AddNetworkString( "constraint_editor_net" )
 
-local REMOVE_CONSTR			= 0
-local UPDATE_CONSTR			= 1
-local DUPLIC_CONSTR			= 2
-local SET_MENU_SURFACE_DATA	= 3
-local SET_MENU_DEEP_DATA	= 4
-local GET_MENU_DEEP_DATA	= 5
-local REMOVE_MENU_CONSTR	= 6
-local ADD_MENU_SURFACE_DATA	= 7
-local GET_ALL_CONSTRS		= 8
-
-local BIT_COUNT_TAG			= 3
-local BIT_COUNT_CONSTR_ID	= 24 -- creation ids go up to 10 million
+local NT = ConstraintEditor.NetTags
+local BIT_COUNT_TAG			= ConstraintEditor.NetBitCounts.TAG
+local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
 
 --------------------------------
 --    Constraint Accessing    --
@@ -65,7 +56,7 @@ function ConstraintEditor.SetAccess( ply, constrID, allow, ent )
 
 	if next( plys ) == nil then ConstraintEditor.ForgetConstr( constrID ) end
 
-	if not allow then ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply ) end
+	if not allow then ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply ) end
 
 end
 
@@ -87,8 +78,8 @@ function ConstraintEditor.TransferAccess( constr, newConstr )
 		ConstraintEditor.SetAccess( ply, newConstrID, true, newConstr )
 
 		-- Update the menus
-		local surfaceConstrData = { [newConstr.Type] = { newConstrID } }
-		ConstraintEditor.SendDataToClient( ADD_MENU_SURFACE_DATA, surfaceConstrData, ply )
+		local surfaceConstrData = ConstraintEditor.GetSurfaceConstrData( newConstr )
+		ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrData, ply )
 
 	end
 
@@ -112,7 +103,7 @@ function ConstraintEditor.ForgetConstr( constrID )
 
 	if data then
 		for ply in pairs( data.allowedPlayers ) do
-			ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply )
+			ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply )
 		end
 	end
 
@@ -164,6 +155,30 @@ function ConstraintEditor.DeleteConstr( constr )
 end
 
 
+function ConstraintEditor.SetEditedEntity( ent, ply )
+
+	if ent ~= NULL and not hook.Run( "CanTool", ply, { Entity = ent }, mode ) then return end
+
+	ConstraintEditor.ClearAccess( ply )
+
+	ConstraintEditor.EditedEnts[ply] = ent
+
+	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
+
+	if not constrs then
+		--ConstraintEditor.ClearAccess( ply )
+		ConstraintEditor.SendDataToClient( NT.SET_SHOWN_CONSTRS, {}, ply )
+		return
+	end
+
+	for constrID, constr in pairs( constrs ) do
+		ConstraintEditor.SetAccess( ply, constrID, true, constr )
+	end
+	ConstraintEditor.SendDataToClient( NT.SET_SHOWN_CONSTRS, surfaceConstrsData, ply )
+
+end
+
+
 --------------------------------
 --  Constraint Manipulation   --
 --------------------------------
@@ -174,7 +189,7 @@ function ConstraintEditor.GetConstrDescriptor( a )
 
 	local constrType = isstring( a ) and a or ( istable( a ) or isentity( a ) ) and a.Type
 
-	local desc = duplicator.ConstraintType[ constrType ]
+	local desc = duplicator.ConstraintType[constrType]
 
 	if desc then return desc, constrType end
 
@@ -184,29 +199,47 @@ end
 -- First returned table contains lists of creation IDs of ent's valid constraints.
 -- The keys used to access those lists are constraint types.
 -- Second returned table's keys are creation IDs, values are constraint entities
-function ConstraintEditor.GetSurfaceConstrData( ent )
+function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
 	if not ( isentity( ent ) and ( ent:IsValid() or ent:IsWorld() ) ) then return false end
 
-	local surfaceConstrData = {}
+	local surfaceConstrsData = {}
 	local constrs = {}
 	local constrTable = constraint.GetTable( ent )
 
 	for _, constrData in ipairs( constrTable ) do
 
-		local constrType	= constrData.Type
-		local constr		= constrData.Constraint or NULL
-		local constrID		= constr.GetCreationID and constr:GetCreationID()
+		local constr = constrData.Constraint or NULL
 
-		if constr:IsValid() and not constr.CEInvalid and constrType and constrID then
+		local surfaceConstrData, constrType, constrID = ConstraintEditor.GetSurfaceConstrData( constr )
+		if constrID then
+			surfaceConstrsData[constrType] = surfaceConstrsData[constrType] or {}
+			surfaceConstrsData[constrType][constrID] = surfaceConstrData[constrType][constrID]
 			constrs[constrID] = constr
-			surfaceConstrData[constrType] = surfaceConstrData[constrType] or {}
-			table.insert( surfaceConstrData[constrType], constrID )
 		end
-
 	end
 
-	return surfaceConstrData, constrs
+	return surfaceConstrsData, constrs
+
+end
+
+
+function ConstraintEditor.GetSurfaceConstrData( constr )
+
+	if not constr then return end
+
+	local constrType	= constr.Type
+	local constrID		= constr.GetCreationID and constr:GetCreationID()
+
+	if constr.CEInvalid or not ( constr:IsValid() and constrType and constrID ) then return nil end
+
+	return {
+		[constrType] = {
+			[constrID] = {
+				constr.Ent1, constr.Ent2 or constr.Ent4, constr.LPos1, constr.LPos2 or constr.LPos4, constr.WPos2, constr.WPos3
+			}
+		}
+	}, constrType, constrID
 
 end
 
@@ -458,7 +491,7 @@ end
 --------------------------------
 
 
-function ConstraintEditor.SendDataToClient( tag, data, ply )
+function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 
 	if not isnumber( tag ) then return end
 	if not isentity( ply ) and ply:IsPlayer() then return end
@@ -467,35 +500,29 @@ function ConstraintEditor.SendDataToClient( tag, data, ply )
 		net.WriteUInt( tag, BIT_COUNT_TAG )
 		if istable( data ) then
 			net.WriteTable( data )
-		else
+		elseif isnumber( data ) then
 			net.WriteUInt( data, BIT_COUNT_CONSTR_ID )
+		elseif isentity( data ) then
+			net.WriteEntity( data )
 		end
 	net.Send( ply )
 
 end
 
 
-function ConstraintEditor.SetEditedEntity( ent, ply )
-
-	ConstraintEditor.ClearAccess( ply )
-
-	ConstraintEditor.EditedEnts[ply] = ent
-
-	local surfaceConstrData, constrs = ConstraintEditor.GetSurfaceConstrData( ent )
-
-	for constrID, constr in pairs( constrs ) do
-		ConstraintEditor.SetAccess( ply, constrID, true, constr )
-	end
-	ConstraintEditor.SendDataToClient( SET_MENU_SURFACE_DATA, surfaceConstrData, ply )
-
-end
-
 
 function ConstraintEditor.SetEditedConstr( constr, ply )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr, true )
 	if not ( constrData and desc ) then return end
-	ConstraintEditor.SendDataToClient( SET_MENU_DEEP_DATA, { constrData, desc.Args }, ply )
+	ConstraintEditor.SendDataToClient( NT.SET_MENU_DEEP_DATA, { constrData, desc.Args }, ply )
+
+end
+
+
+function ConstraintEditor.GetLeftClickInfo( ent, ply )
+
+	ConstraintEditor.SendDataToClient( NT.LEFT_CLICK, ent, ply )
 
 end
 
@@ -506,26 +533,35 @@ function ConstraintEditor.HandleNetRequests()
 	net.Receive( "constraint_editor_net", function( len, ply )
 
 		local tag		= net.ReadUInt( BIT_COUNT_TAG )
+
+		if tag == NT.SET_EDITED_ENTITY then
+
+			if not ( ply and ply:IsPlayer() ) then return end
+			local ent = net.ReadEntity()
+			ConstraintEditor.SetEditedEntity( ent, ply )
+
+		end
+
 		local constrID	= net.ReadUInt( BIT_COUNT_CONSTR_ID )
 		local constr	= ConstraintEditor.Access( ply, constrID )
 
-		if not constr then ConstraintEditor.SendDataToClient( REMOVE_MENU_CONSTR, constrID, ply ) return end
+		if not constr then ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply ) return end
 		if not IsValid ( constr ) then ConstraintEditor.ForgetConstr( constrID ) return end
 
-		if tag == GET_MENU_DEEP_DATA then
+		if tag == NT.GET_MENU_DEEP_DATA then
 
 			ConstraintEditor.SetEditedConstr( constr, ply )
 
-		elseif tag == REMOVE_CONSTR then
+		elseif tag == NT.REMOVE_CONSTR then
 
 			ConstraintEditor.DeleteConstr( constr )
 
-		elseif tag == UPDATE_CONSTR then
+		elseif tag == NT.UPDATE_CONSTR then
 
 			local newData = net.ReadTable()
 			ConstraintEditor.UpdateConstr( constr, newData, ply, true )
 
-		elseif tag == DUPLIC_CONSTR then
+		elseif tag == NT.DUPLIC_CONSTR then
 
 			ConstraintEditor.UpdateConstr( constr, {}, ply, true, true )
 

@@ -1,16 +1,11 @@
-local REMOVE_CONSTR			= 0
-local UPDATE_CONSTR			= 1
-local DUPLIC_CONSTR			= 2
-local SET_MENU_SURFACE_DATA	= 3
-local SET_MENU_DEEP_DATA	= 4
-local GET_MENU_DEEP_DATA	= 5
-local REMOVE_MENU_CONSTR	= 6
-local ADD_MENU_SURFACE_DATA	= 7
-local GET_ALL_CONSTRS		= 8
 
-local BIT_COUNT_TAG			= 3
-local BIT_COUNT_CONSTR_ID	= 24 -- creation ids go up to 10 million
+local NT = ConstraintEditor.NetTags
+local BIT_COUNT_TAG			= ConstraintEditor.NetBitCounts.TAG
+local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
 
+
+ConstraintEditor.Constrs = {}
+ConstraintEditor.HoveredConstrID = -1 -- for the stool
 
 
 function ConstraintEditor.GetTestTable( constrID )
@@ -35,23 +30,38 @@ function ConstraintEditor.HandleNetRequests( mode )
 		local constrBrowser	= cPanel.constrBrowser
 		if not IsValid( constrBrowser ) then return end
 
-		if tag == SET_MENU_SURFACE_DATA then
+		if tag == NT.LEFT_CLICK then
 
-			constrBrowser:SetConstrs( net.ReadTable() )
+			local ent = net.ReadEntity()
+			local hCID = ConstraintEditor.HoveredConstrID
+			if not hCID or hCID == -1 then
+				ConstraintEditor.SetEditedEntity( ent )
+			else
+				ConstraintEditor.RequestConstrData( hCID )
+			end
 
-		elseif tag == SET_MENU_DEEP_DATA then
+		elseif tag == NT.SET_SHOWN_CONSTRS then
+
+			local data = net.ReadTable() or {}
+			constrBrowser:SetConstrs( data )
+			ConstraintEditor.Constrs = data
+
+		elseif tag == NT.SET_MENU_DEEP_DATA then
 
 			local data = net.ReadTable()
 			constrBrowser:ShowConstr( data[1], data[2] )
 
-		elseif tag == REMOVE_MENU_CONSTR then
+		elseif tag == NT.FORGET_CONSTR then
 
 			local constrID = net.ReadUInt( 24 )
 			constrBrowser:RemoveConstr( constrID )
+			ConstraintEditor.ForgetConstr( constrID )
 
-		elseif tag == ADD_MENU_SURFACE_DATA then
+		elseif tag == NT.ADD_SHOWN_CONSTRS then
 
-			constrBrowser:AddConstrs( net.ReadTable() )
+			local data = net.ReadTable()
+			constrBrowser:AddConstrs( data )
+			table.Merge( ConstraintEditor.Constrs, data )
 
 		end
 
@@ -61,11 +71,25 @@ end
 
 
 function ConstraintEditor.RequestConstrData( constrID )
-	ConstraintEditor.SendDataToServer( GET_MENU_DEEP_DATA, constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_MENU_DEEP_DATA, constrID )
 end
 
 
-function ConstraintEditor.SendDataToServer( tag, constrID, data )
+function ConstraintEditor.SetEditedEntity( ent )
+	ConstraintEditor.SendDataToServer( NT.SET_EDITED_ENTITY, nil, nil, ent )
+end
+
+
+function ConstraintEditor.ForgetConstr( constrID )
+	for constrType, constrDatas in pairs( ConstraintEditor.Constrs ) do
+		if constrDatas[constrID] then
+			constrDatas[constrID] = nil
+		end
+	end
+end
+
+
+function ConstraintEditor.SendDataToServer( tag, constrID, data, ent )
 
 	if not isnumber( tag ) then return end
 
@@ -73,6 +97,7 @@ function ConstraintEditor.SendDataToServer( tag, constrID, data )
 		net.WriteUInt( tag, BIT_COUNT_TAG )
 		if isnumber( constrID ) then net.WriteUInt( constrID, BIT_COUNT_CONSTR_ID ) end
 		if istable( data ) then net.WriteTable( data ) end
+		if isentity( ent ) then net.WriteEntity( ent ) end
 	net.SendToServer()
 
 end

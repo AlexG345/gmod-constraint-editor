@@ -1,8 +1,8 @@
 local PANEL = {}
 
-local REMOVE_CONSTR			= 0
-local UPDATE_CONSTR			= 1
-local DUPLIC_CONSTR			= 2
+local NT = ConstraintEditor.NetTags
+
+
 
 function PANEL:Init()
 
@@ -33,7 +33,7 @@ function PANEL:Init()
 		ButtonApply:SetText( "Apply Changes" )
 
 		function ButtonApply:DoClick()
-			ConstraintEditor.SendDataToServer( UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
+			ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
 		end
 
 
@@ -43,7 +43,7 @@ function PANEL:Init()
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
 		function ButtonDuplicate:DoClick()
-			ConstraintEditor.SendDataToServer( DUPLIC_CONSTR, editor.constrID )
+			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, editor.constrID )
 		end
 
 
@@ -53,7 +53,7 @@ function PANEL:Init()
 		ButtonDelete:SetText( "Remove Constraint" )
 
 		function ButtonDelete:DoClick()
-			ConstraintEditor.SendDataToServer( REMOVE_CONSTR, editor.constrID )
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, editor.constrID )
 		end
 
 
@@ -123,13 +123,14 @@ function PANEL:ShowConstr( codedData, args )
 	self.Properties:Clear()
 	self.constrData = {}
 	self.constrDataCache = {}
+	self.constrID = -1
 
 	if not args then return end
 
 	local constrID		= codedData.constrID
 	local constrType	= codedData.Type
 	self.constrID		= constrID
-	self.constrData.Type		= constrType
+	self.constrData.Type	= constrType
 	self.args		= args
 	self.argsOrder	= {}
 	self.rows		= {}
@@ -169,15 +170,13 @@ function PANEL:ShowConstr( codedData, args )
 
 	self.ButtonPaste:SetEnabled( self:CanPaste() )
 
-	--[[
 	if constrType then
 
-		local row = self.Properties:CreateRow( "Constraint Information", "Type" )
+		local row = self.Properties:CreateRow( "Extra Information", "Type" )
 		row:Setup( "String", { readonly = true } )
 		row:SetValue( constrType )
 
 	end
-	]]
 
 end
 
