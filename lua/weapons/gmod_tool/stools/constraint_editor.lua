@@ -106,6 +106,7 @@ function TOOL:DrawHUD()
 	local color_green	= Color( 40, 250, 40 )
 	local color_dgreen	= Color( 20, 200, 90 )
 	local color_blue	= Color( 70, 200, 255 )
+	local color_orange	= Color( 230, 200, 0 )
 	local font1		= "DermaDefault"
 	local font2		= "DermaDefaultBold"
 	local font3		= "CreditsText"
@@ -202,6 +203,15 @@ function TOOL:DrawHUD()
 				render.AddBeam( pos, beamWidth, 0, beamColor )
 			end
 			render.EndBeam()
+
+			if isEdited or isHovered then
+				for _, e in ipairs( { Ent1, Ent2 } ) do
+					if e.GetModelRenderBounds then -- draws for world too, idk if that's good or not
+						local mins, maxs = e:GetModelRenderBounds()
+						render.DrawWireframeBox( e:GetPos(), e:GetAngles(), mins, maxs, isEdited and color_white or color_green )
+					end
+				end
+			end
 
 			cam.End3D()
 
