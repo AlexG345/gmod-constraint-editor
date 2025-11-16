@@ -42,7 +42,6 @@ function ConstraintEditor.HandleNetRequests( mode )
 
 		elseif tag == NT.RIGHT_CLICK then
 
-			print("yes")
 			local hCID = ConstraintEditor.HoveredConstrID
 			if not hCID or hCID == -1 then
 				ConstraintEditor.SetEditedEntity( NULL )
