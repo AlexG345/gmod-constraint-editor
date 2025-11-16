@@ -518,16 +518,17 @@ end
 
 
 --------------------------------
---       Safety Check         --
+--       Limits Check         --
 --------------------------------
 
 
--- This function exists because you have to create the constraints first to know if they are ropeconstraints or not
+-- You have to create the constraint first to know if it's a ropeconstraint or not
+-- Note that ropeconstraints name come from the fact that they involve keyframe_rope entities
 function ConstraintEditor.DoPlayerLimits( ply, constr, rope, enforceLimits )
 
 	if not ( ply and ( constr or rope ) ) then return true end
 
-	if enforceLimits then
+	if enforceLimits and not game.SinglePlayer() then
 		for str, goodEnt in pairs( { ropeconstraints = rope, constraints = not rope } ) do
 			if goodEnt and ply:GetCount( str ) >= cvars.Number( "sbox_max" .. str, 0 ) then
 				ply:LimitHit( str )
