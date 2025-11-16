@@ -238,7 +238,7 @@ function ConstraintEditor.GetSurfaceConstrData( constr )
 	return {
 		[constrType] = {
 			[constrID] = {
-				constr.Ent1, constr.Ent2 or constr.Ent4, constr.LPos1, constr.LPos2 or constr.LPos4, constr.WPos2, constr.WPos3
+				constr.Ent1, constr.Ent2 or constr.Ent4, constr.LPos1 or constr.LPos, constr.LPos2 or constr.LPos4, constr.WPos2, constr.WPos3
 			}
 		}
 	}, constrType, constrID
@@ -296,25 +296,55 @@ end
 
 
 -- Tries to create a new constraint.
-function ConstraintEditor.CreateConstr( constr, constrData, ply )
+-- This is long mostly because of having to handle wire hydraulics
+function ConstraintEditor.CreateConstr( constr, constrData, ply, enforceLimits )
 
 	local buildInfo = constr and constr.BuildDupeInfo
 
-	local _, desc = ConstraintEditor.GetConstrData( constr, true )
+	local data, desc = ConstraintEditor.GetConstrData( constr, true )
 
-	local newConstr
+	local wireController
+
+	if data.Type == "WireHydraulic" then
+		for i, arg in pairs( desc.Args ) do
+			if arg == "MyCrtl" then
+				wireController = constrData[i] and Entity( constrData[i] )
+				constrData[i] = nil
+			end
+		end
+	end
+
+	local ok, newConstr, rope
 
 	if buildInfo then
 		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
-		newConstr = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
+		newConstr, rope = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
 	else
 		-- Uses normal duplicator. Has information loss (e.g Ent1 and Ent2's relative position is lost)
-		newConstr = desc.Func( unpack( constrData ) )
+		ok, newConstr, rope = pcall( desc.Func, unpack( constrData, 1, #constrData ) )
+		if ply and not ( ok and newConstr ) then
+			ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint properly!" )
+		end
 	end
 
-	if ply and isentity( newConstr ) and newConstr:IsValid() then ply:AddCount( "ropeconstraints", newConstr ) end
+	if not ConstraintEditor.DoPlayerLimits( ply, newConstr, rope, enforceLimits ) then return end
 
-	return newConstr
+	if wireController and wireController:GetClass() == "gmod_wire_hydraulic" then
+		for _, ent in ipairs( { wireController.constraint, wireController.rope } ) do
+			if isentity( ent ) then
+				ent.MyCrtl = -1 -- if set to nil it's uneditable afterwards
+				wireController:DontDeleteOnRemove( ent )
+				ent:DontDeleteOnRemove( wireController )
+			end
+		end
+		wireController:SetConstraint( newConstr, rope )
+		wireController:DeleteOnRemove( newConstr )
+		wireController:DeleteOnRemove( rope )
+		newConstr.MyCrtl = wireController:EntIndex()
+		constr.MyCrtl = -1
+	end
+
+	return newConstr, rope
 
 end
 
@@ -347,17 +377,16 @@ function ConstraintEditor.CompleteConstrData( constr, newData, ply )
 end
 
 
+
 -- Constraint editing / deletion happens here
 function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize, duplicate )
-
-	if duplicate and ply and not ply:CheckLimit( "ropeconstraints" ) then return end
 
 	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
 
 	local isChanged = ConstraintEditor.CompleteConstrData( constr, newData )
 	if not ( isChanged or duplicate ) then return end
 
-	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply )
+	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply, duplicate )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
 
@@ -442,13 +471,13 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 		end
 	end
 
-	local ok, Ent = pcall( factory, unpack( newData, 1, #newData ) )
+	local ok, newConstr, rope = pcall( factory, unpack( newData, 1, #newData ) )
 
-	if ply and not ( ok and Ent ) then
-		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint!" )
+	if ply and not ( ok and newConstr ) then
+		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint properly!" )
 	end
 
-	if Ent then Ent.BuildDupeInfo = table.Copy( buildInfo ) end
+	if newConstr then newConstr.BuildDupeInfo = table.Copy( buildInfo ) end
 
 	-- Move the entities back after constraining them. No point in moving the world though.
 
@@ -480,11 +509,43 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 		end
 	end
 
-	if Ent and Ent.length then
-		Ent.length = constr.length
+	if newConstr and newConstr.length then
+		newConstr.length = constr.length
 	end -- Fix for weird bug with ropes
 
-	return Ent
+	return newConstr, rope
+end
+
+
+--------------------------------
+--       Safety Check         --
+--------------------------------
+
+
+-- This function exists because you have to create the constraints first to know if they are ropeconstraints or not
+function ConstraintEditor.DoPlayerLimits( ply, constr, rope, enforceLimits )
+
+	if not ( ply and ( constr or rope ) ) then return true end
+
+	if enforceLimits then
+		for str, goodEnt in pairs( { ropeconstraints = rope, constraints = not rope } ) do
+			if goodEnt and ply:GetCount( str ) >= cvars.Number( "sbox_max" .. str, 0 ) then
+				ply:LimitHit( str )
+				SafeRemoveEntity( constr )
+				SafeRemoveEntity( rope )
+				return false
+			end
+		end
+	end
+
+	if isentity( rope ) and rope:IsValid() then
+		ply:AddCount( "ropeconstraints", rope )
+	elseif isentity( constr ) and constr:IsValid() then
+		ply:AddCount( "constraints", constr )
+	end
+
+	return true
+
 end
 
 

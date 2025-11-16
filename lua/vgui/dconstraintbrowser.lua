@@ -8,7 +8,7 @@ function PANEL:Init()
 	self.Divider:SetTopHeight( 240 )
 	self.Divider:SetTopMin( 100 )
 	self.Divider:SetBottomMin( 300 )
-	self.Divider:SetDividerHeight( 3 )
+	self.Divider:SetDividerHeight( 5 )
 
 	--[[
 	self.Divider = self:Add( "DHorizontalDivider" )
