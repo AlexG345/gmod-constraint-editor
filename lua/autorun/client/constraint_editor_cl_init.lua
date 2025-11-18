@@ -20,6 +20,7 @@ function ConstraintEditor.GetTestTable( constrID )
 end
 
 
+-- these elseif are getting out of hand
 function ConstraintEditor.HandleNetRequests( mode )
 
 	net.Receive( "constraint_editor_net", function( len, _ )
@@ -44,9 +45,16 @@ function ConstraintEditor.HandleNetRequests( mode )
 
 			local hCID = ConstraintEditor.HoveredConstrID
 			if not hCID or hCID == -1 then
-				ConstraintEditor.SetEditedEntity( NULL )
+				ConstraintEditor.SendDataToServer( NT.UNSET_EDITED_ENTITY )
 			else
 				ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, hCID )
+			end
+
+		elseif tag == NT.RELOAD then
+
+			local editor = constrBrowser.ConstraintEditor
+			if editor then
+				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
 			end
 
 		elseif tag == NT.SET_SHOWN_CONSTRS then

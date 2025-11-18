@@ -157,9 +157,11 @@ end
 
 function ConstraintEditor.SetEditedEntity( ent, ply )
 
-	if isentity( ent ) and ent:IsWorld() and not game.SinglePlayer() then return false end
+	if not isentity( ent ) then ent = NULL end
 
-	if ent ~= NULL and not hook.Run( "CanTool", ply, { Entity = ent }, mode ) then return end
+	if ent:IsWorld() and not game.SinglePlayer() then return false end
+
+	if ent ~= NULL and not hook.Run( "CanTool", ply, { Entity = ent or NULL }, mode ) then return end
 
 	ConstraintEditor.ClearAccess( ply )
 
@@ -295,6 +297,15 @@ function ConstraintEditor.SanitizeConstrData( constrData )
 end
 
 
+local function createConstrWithDuplicator( factory, constrData, ply, constrType )
+	local ok, constr, rope = pcall( factory, unpack( constrData, 1, #constrData ) )
+	if ply and not ( ok and constr ) then
+		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constrType or "unknown type" .. " constraint properly!" )
+	end
+	return constr, rope
+end
+
+
 -- Tries to create a new constraint.
 -- This is long mostly because of having to handle wire hydraulics
 function ConstraintEditor.CreateConstr( constr, constrData, ply, enforceLimits )
@@ -314,20 +325,18 @@ function ConstraintEditor.CreateConstr( constr, constrData, ply, enforceLimits )
 		end
 	end
 
-	local ok, newConstr, rope
+	local newConstr, rope
 
 	if buildInfo then
 		-- Uses BuildDupeInfo (needs advanced duplicator 2 to work)
 		newConstr, rope = ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, desc.Func, constrData, ply )
 	else
 		-- Uses normal duplicator. Has information loss (e.g Ent1 and Ent2's relative position is lost)
-		ok, newConstr, rope = pcall( desc.Func, unpack( constrData, 1, #constrData ) )
-		if ply and not ( ok and newConstr ) then
-			ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint properly!" )
-		end
+		newConstr, rope = createConstrWithDuplicator( desc.Func, constrData, ply, constr.Type )
 	end
 
-	if not ConstraintEditor.DoPlayerLimits( ply, newConstr, rope, enforceLimits ) then return end
+	local limitSafe, cleanupType = ConstraintEditor.DoPlayerLimits( ply, newConstr, rope, enforceLimits )
+	if not limitSafe then return nil, nil, cleanupType end
 
 	if wireController and wireController:GetClass() == "gmod_wire_hydraulic" then
 		for _, ent in ipairs( { wireController.constraint, wireController.rope } ) do
@@ -344,7 +353,7 @@ function ConstraintEditor.CreateConstr( constr, constrData, ply, enforceLimits )
 		constr.MyCrtl = -1
 	end
 
-	return newConstr, rope
+	return newConstr, rope, cleanupType
 
 end
 
@@ -378,7 +387,7 @@ end
 
 
 
--- Constraint editing / deletion happens here
+-- Links constraint data handling, constraint creation, player permissions, ...
 function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize, duplicate )
 
 	if sanitize then ConstraintEditor.SanitizeConstrData( newData ) end
@@ -386,7 +395,7 @@ function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize, duplicat
 	local isChanged = ConstraintEditor.CompleteConstrData( constr, newData )
 	if not ( isChanged or duplicate ) then return end
 
-	local newConstr = ConstraintEditor.CreateConstr( constr, newData, ply, duplicate )
+	local newConstr, _, cleanupType = ConstraintEditor.CreateConstr( constr, newData, ply, duplicate )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
 
@@ -394,10 +403,22 @@ function ConstraintEditor.UpdateConstr( constr, newData, ply, sanitize, duplicat
 	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
 	ConstraintEditor.TransferAccess( constr, newConstr )
 
+	if ply then
+		cleanup.Add( ply, cleanupType, newConstr )
+		undo.Create( newConstr.Type )
+			undo.SetPlayer( ply )
+			undo.AddEntity( newConstr )
+		undo.Finish()
+	end
+
 	if duplicate then return end
 
+	--[[ not used like this?
+	undo.Create( newConstr.Type )
 	undo.ReplaceEntity( constr, newConstr)
+	undo.Finish()
 	cleanup.ReplaceEntity( constr, newConstr )
+	--]]
 
 	-- todo: check if players other than ply are editing the constr so that editor stays open for them
 	if ply then ConstraintEditor.SetEditedConstr( newConstr, ply ) end
@@ -471,11 +492,7 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 		end
 	end
 
-	local ok, newConstr, rope = pcall( factory, unpack( newData, 1, #newData ) )
-
-	if ply and not ( ok and newConstr ) then
-		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constr.Type or "unknown type" .. " constraint properly!" )
-	end
+	local newConstr, rope = createConstrWithDuplicator( factory, newData, ply, constr.Type )
 
 	if newConstr then newConstr.BuildDupeInfo = table.Copy( buildInfo ) end
 
@@ -509,10 +526,13 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 		end
 	end
 
+	--[[
 	if newConstr and newConstr.length then
 		newConstr.length = constr.length
 	end -- Fix for weird bug with ropes
+	]]
 
+	print(newConstr, rope)
 	return newConstr, rope
 end
 
@@ -526,28 +546,28 @@ end
 -- Note that ropeconstraints name come from the fact that they involve keyframe_rope entities
 function ConstraintEditor.DoPlayerLimits( ply, constr, rope, enforceLimits )
 
-	if not ( ply and ( constr or rope ) ) then return true end
+	local cleanupType = ConstraintEditor.GetCleanupType( constr, rope )
 
-	if enforceLimits and not game.SinglePlayer() then
-		for str, goodEnt in pairs( { ropeconstraints = rope, constraints = not rope } ) do
-			if goodEnt and ply:GetCount( str ) >= cvars.Number( "sbox_max" .. str, 0 ) then
-				ply:LimitHit( str )
-				SafeRemoveEntity( constr )
-				SafeRemoveEntity( rope )
-				return false
-			end
+	if ply and ( constr or rope ) then
+		if not game.SinglePlayer() and enforceLimits and ply:GetCount( cleanupType ) >= cvars.Number( "sbox_max" .. cleanupType, 0 ) then
+			ply:LimitHit( cleanupType )
+			SafeRemoveEntity( constr )
+			SafeRemoveEntity( rope )
+			return false, cleanupType
 		end
+
+		ply:AddCount( cleanupType, constr or rope )
 	end
 
-	if isentity( rope ) and rope:IsValid() then
-		ply:AddCount( "ropeconstraints", rope )
-	elseif isentity( constr ) and constr:IsValid() then
-		ply:AddCount( "constraints", constr )
-	end
-
-	return true
+	return true, cleanupType
 
 end
+
+
+function ConstraintEditor.GetCleanupType( constr, rope )
+	return ( isentity( rope ) and rope:IsValid() and "ropeconstraints" ) or ( isentity( constr ) and constr:IsValid() and "constraints" )
+end
+
 
 
 --------------------------------
@@ -587,9 +607,12 @@ function ConstraintEditor.LeftClick( ent, ply )
 	ConstraintEditor.SendDataToClient( NT.LEFT_CLICK, ent, ply )
 end
 
-
 function ConstraintEditor.RightClick( ply )
 	ConstraintEditor.SendDataToClient( NT.RIGHT_CLICK, nil, ply )
+end
+
+function ConstraintEditor.Reload( ply )
+	ConstraintEditor.SendDataToClient( NT.RELOAD, nil, ply )
 end
 
 
@@ -600,11 +623,17 @@ function ConstraintEditor.HandleNetRequests()
 
 		local tag = net.ReadUInt( BIT_COUNT_TAG )
 
-		if tag == NT.SET_EDITED_ENTITY then
+		if tag == NT.UNSET_EDITED_ENTITY then
+
+			if not ( ply and ply:IsPlayer() ) then return end
+			ConstraintEditor.SetEditedEntity( nil, ply )
+
+		elseif tag == NT.SET_EDITED_ENTITY then
 
 			if not ( ply and ply:IsPlayer() ) then return end
 			local ent = net.ReadEntity()
 			ConstraintEditor.SetEditedEntity( ent, ply )
+
 
 		end
 

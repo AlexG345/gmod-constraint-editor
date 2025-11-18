@@ -17,7 +17,8 @@ if CLIENT then
 
 	TOOL.Information = {
 		{ name = "left" },
-		{ name = "right" }
+		{ name = "right" },
+		{ name = "reload" }
 	}
 
 	TOOL.ClientConVar = {
@@ -35,9 +36,9 @@ if CLIENT then
 	l( "name", TOOL.Name )
 	l( "desc", "Edit any constraint." )
 	l( "0" )
-	l( "left", "Edit an entity's constraints or select a constraint" )
-	l( "right", "Unselect the edited entity or DELETE a constraint" )
-	l( "reload" )
+	l( "left", "Edit an entity's constraints or select highlighted constraint" )
+	l( "right", "Unselect the edited entity or DELETE highlighted constraint" )
+	l( "reload", "Apply current changes to selected constraint" )
 
 	t, l = nil, nil
 
@@ -67,8 +68,17 @@ function TOOL:RightClick( trace )
 
 end
 
--- apply changes?
--- function TOOL:Reload() end
+
+function TOOL:Reload()
+
+	if SERVER then
+		ConstraintEditor.TryCleanupTables()
+		ConstraintEditor.Reload( self:GetOwner() )
+	end
+
+	return true
+
+end
 
 
 ConstraintEditor.HandleNetRequests( mode )
@@ -126,7 +136,7 @@ function TOOL:DrawHUD()
 
 		for constrID, constrData in pairs( constrDatas ) do
 
-			local Ent1, Ent2, LPos1, LPos2, WPos2, WPos3 = unpack( constrData )
+			local Ent1, Ent2, LPos1, LPos2, WPos1, WPos2 = unpack( constrData )
 
 			if not ( isentity( Ent1 ) and isentity( Ent2 ) ) then return end
 			if Ent1 == NULL or Ent2 == NULL then return end
@@ -147,8 +157,8 @@ function TOOL:DrawHUD()
 
 			local positions = {}
 			table.insert( positions, pos1 )
+			table.insert( positions, WPos1 )
 			table.insert( positions, WPos2 )
-			table.insert( positions, WPos3 )
 			table.insert( positions, pos2 )
 
 			local isEdited = editedConstrID > 0 and constrID == editedConstrID
@@ -206,7 +216,7 @@ function TOOL:DrawHUD()
 			if isEdited or isHovered then
 				for _, e in ipairs( { Ent1, Ent2 } ) do
 					if e.GetModelRenderBounds then -- draws for world too, idk if that's good or not
-						local mins, maxs = e:GetModelRenderBounds()
+						local mins, maxs = e:GetCollisionBounds()
 						render.DrawWireframeBox( e:GetPos(), e:GetAngles(), mins, maxs, isEdited and color_white or color_green )
 					end
 				end
