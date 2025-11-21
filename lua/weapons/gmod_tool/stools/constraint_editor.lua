@@ -215,7 +215,7 @@ function TOOL:DrawHUD()
 
 			if isEdited or isHovered then
 				for _, e in ipairs( { Ent1, Ent2 } ) do
-					if e.GetModelRenderBounds then -- draws for world too, idk if that's good or not
+					if e.GetCollisionBounds then -- draws for world too, idk if that's good or not
 						local mins, maxs = e:GetCollisionBounds()
 						render.DrawWireframeBox( e:GetPos(), e:GetAngles(), mins, maxs, isEdited and color_white or color_green )
 					end

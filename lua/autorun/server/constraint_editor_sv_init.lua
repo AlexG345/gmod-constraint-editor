@@ -532,7 +532,6 @@ function ConstraintEditor.CreateWithBuildInfo( constr, buildInfo, factory, newDa
 	end -- Fix for weird bug with ropes
 	]]
 
-	print(newConstr, rope)
 	return newConstr, rope
 end
 
