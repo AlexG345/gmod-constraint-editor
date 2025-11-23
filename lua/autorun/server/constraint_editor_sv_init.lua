@@ -346,9 +346,12 @@ function ConstraintEditor.CreateConstr( constr, constrData, ply, enforceLimits )
 				ent:DontDeleteOnRemove( wireController )
 			end
 		end
+		
 		wireController:SetConstraint( newConstr, rope )
-		wireController:DeleteOnRemove( newConstr )
-		wireController:DeleteOnRemove( rope )
+		for _, ent in ipairs( { newConstr, rope } ) do
+			if isentity( ent ) then wireController:DeleteOnRemove( ent ) end -- check if entity exists since rope is deleted if width = 0 ?
+		end
+
 		newConstr.MyCrtl = wireController:EntIndex()
 		constr.MyCrtl = -1
 	end
