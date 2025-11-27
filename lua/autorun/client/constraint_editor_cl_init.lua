@@ -7,7 +7,7 @@ local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
 ConstraintEditor.Constrs = {}
 ConstraintEditor.HoveredConstrID = -1 -- for the stool
 
-
+--[[
 function ConstraintEditor.GetTestTable( constrID )
 	return {
 	[7]			=	500,
@@ -18,7 +18,7 @@ function ConstraintEditor.GetTestTable( constrID )
 	constrID	=	constrID
 	}
 end
-
+]]
 
 -- these elseif are getting out of hand
 function ConstraintEditor.HandleNetRequests( mode )
