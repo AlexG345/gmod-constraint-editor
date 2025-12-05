@@ -16,13 +16,18 @@ if CLIENT then
 	TOOL.Name		= "Constraint Editor"
 
 	TOOL.Information = {
-		{ name = "left" },
-		{ name = "right" },
-		{ name = "reload" }
+		{ name = "left0", stage = 0 },
+		{ name = "left", stage = 1 },
+		{ name = "left", stage = 2 },
+		{ name = "right", stage = 1 },
+		{ name = "right", stage = 2 },
+		{ name = "reload1", stage = 1 },
+		{ name = "reload2", stage = 2 }
 	}
 
 	TOOL.ClientConVar = {
-		--["width"] = 1
+		["hud_show_text"] = 1,
+		["hud_beam_width_min"] = 1
 	}
 
 	local t = "tool." .. mode .. "."
@@ -36,11 +41,26 @@ if CLIENT then
 	l( "name", TOOL.Name )
 	l( "desc", "Edit any constraint." )
 	l( "0" )
-	l( "left", "Edit an entity's constraints or select highlighted constraint" )
-	l( "right", "Unselect the edited entity or DELETE highlighted constraint" )
-	l( "reload", "Apply current changes to selected constraint" )
+	l( "left0", "Edit an entity's constraints" )
+	l( "left", "Edit the constraint you're looking at,  or edit another entity's constraints" )
+	l( "right", "DELETE the constraint you're facing,  or stop editing current entity" )
+	l( "reload1", "Transfer all constraints from the edited entity to the one you're looking at" )
+	l( "reload2", "Transfer selected constraint from the edited entity to the one you're looking at" )
 
 	t, l = nil, nil
+
+	--local constrTypes = { "Axis", "AdvBallsocket", "Ballsocket", "Elastic", "Hydraulic", "Keepupright", "Motor", "Muscle", "Pulley", "Rope", "Slider", "Weld", "Winch", "NoCollide", "Other" }
+	local constrTypes = { "Weld", "Keepupright", "Rope", "Muscle", "Hydraulic", "Winch", "Elastic", "Motor", "Axis", "Ballsocket", "AdvBallsocket", "Slider", "Other" }
+	-- NoCollide is unlisted
+
+	local hueStep = 360 / ( #constrTypes )
+
+	TOOL.ConstrTypeColor = {}
+	for i, constrType in ipairs( constrTypes ) do
+		TOOL.ConstrTypeColor[constrType] = HSVToColor( ( - 0 + ( i - 1 ) * hueStep ) % 360, 0.55, 0.95 )
+	end
+
+	TOOL.ConstrTypeColor.NoCollide = HSVToColor( 0, 0, 0.5 )
 
 end
 
@@ -100,6 +120,9 @@ function TOOL.BuildCPanel( cPanel )
 
 	cPanel:Help( l( "desc" ) )
 
+	cPanel:CheckBox( "Enable constraint type and ID display", mode .. "_hud_show_text" )
+	cPanel:NumSlider( "Minimum constraint lines width", mode .. "_hud_beam_width_min", 0.4, 20 )
+
 	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
 		cPanel:AddItem( constrBrowser )
 		constrBrowser:SetSize( 250, 650 )
@@ -108,141 +131,20 @@ function TOOL.BuildCPanel( cPanel )
 
 end
 
+--[[
+-- TODO: Check if freeze is produced only clientside when clicking on ent with lots of constraints
+-- It seems to be the case but i'm unsure if i need to check FrameTime or engine.TickInterval or something else serverside.
+-- Also need to check on other clients
+function TOOL:Think()
+	if FrameTime() > 0.02 then
+		print( FrameTime() )
+	end
+end
+]]
+
 -- need to check if constraint still exists somehow
 function TOOL:DrawHUD()
 
-	local bordersize	= 4
-	local boxcolor		= Color( 0, 0, 0, 200 )
-	local color_green	= Color( 40, 250, 40 )
-	local color_dgreen	= Color( 20, 200, 90 )
-	local color_blue	= Color( 70, 200, 255 )
-	local font1		= "DermaDefault"
-	local font2		= "DermaDefaultBold"
-	local font3		= "CreditsText"
-	local font4		= "Trebuchet24"
-	local overlaps		= {}
-	local textDatas		= {}
+	ConstraintEditor.DrawHUD( self:GetClientBool("hud_show_text"), self:GetClientNumber("hud_beam_width_min"), self.ConstrTypeColor )
 
-	local canHover		= true
-	ConstraintEditor.HoveredConstrID = -1
-
-	local cPanel = controlpanel.Get( mode )
-	local constrEditor = cPanel and cPanel.constrBrowser and cPanel.constrBrowser.ConstraintEditor
-	local editedConstrID = constrEditor and constrEditor.constrID or -1
-
-	surface.SetFont( font1 )
-
-	for constrType, constrDatas in pairs( ConstraintEditor.Constrs ) do
-
-		for constrID, constrData in pairs( constrDatas ) do
-
-			local Ent1, Ent2, LPos1, LPos2, WPos1, WPos2 = unpack( constrData )
-
-			if not ( isentity( Ent1 ) and isentity( Ent2 ) ) then return end
-			if Ent1 == NULL or Ent2 == NULL then return end
-
-			local pos1, pos2
-
-			if IsValid( Ent1 ) then
-				pos1 = LPos1 and Ent1:LocalToWorld( LPos1 ) or Ent1:GetPos()
-			else
-				pos1 = LPos1 or LPos2
-			end
-
-			if IsValid( Ent2 ) then
-				pos2 = LPos2 and Ent2:LocalToWorld( LPos2 ) or Ent2:GetPos()
-			else
-				pos2 = LPos2 or LPos1 or pos1 - 100 * vector_up
-			end
-
-			local positions = {}
-			table.insert( positions, pos1 )
-			table.insert( positions, WPos1 )
-			table.insert( positions, WPos2 )
-			table.insert( positions, pos2 )
-
-			local isEdited = editedConstrID > 0 and constrID == editedConstrID
-			local isHovered	= false
-			local index		= math.floor( #positions / 2 )
-			local midPos	= ( positions[index] + positions[index + 1] ) / 2
-			local textPos	= midPos:ToScreen()
-
-			local id = string.format("%s_%s_%s", math.floor( midPos.x ), math.floor( midPos.y ), math.floor( midPos.z ) )
-			overlaps[id] = overlaps[id] and overlaps[id] + 1 or 0
-			textPos.y = textPos.y + overlaps[id] * 20
-
-			if textPos.visible then
-
-				local text = constrType .. ( " [" .. constrID or "?" ) .. "]"
-
-				local w, h = surface.GetTextSize( text )
-				w, h = w + bordersize * 2, h + bordersize * 2
-
-				local cursorPos = {}
-				cursorPos.x, cursorPos.y = input.GetCursorPos()
-
-				isHovered = canHover and math.abs( cursorPos.x - textPos.x ) * 2 < w and math.abs( cursorPos.y - textPos.y ) * 2 < h
-
-				if isHovered then
-					canHover = false
-					ConstraintEditor.HoveredConstrID = constrID
-				end
-
-				local font = ( isEdited and isHovered and font4 ) or isEdited and font3 or isHovered and font2 or font1
-				textDatas[constrID] = { { textPos, text, font, isEdited and color_blue } }
-
-				for _, data in ipairs( { { ent = Ent1, pos = pos1 }, { ent = Ent2, pos = pos2 } } ) do
-					if data.ent:IsWorld() then
-						textPos = data.pos:ToScreen()
-						textDatas[constrID][2] = { textPos, "[World]", font1 }
-					end
-				end
-
-			end
-
-			cam.Start3D()
-
-			local beamWidth = isHovered and 2 or 0.9
-			if isEdited then beamWidth = beamWidth + 0.4 end
-			local beamColor = isEdited and color_white or  isHovered and color_green or color_dgreen
-
-			render.SetColorMaterial()
-			render.StartBeam( #positions )
-			for _, pos in ipairs( positions ) do
-				render.AddBeam( pos, beamWidth, 0, beamColor )
-			end
-			render.EndBeam()
-
-			if isEdited or isHovered then
-				for _, e in ipairs( { Ent1, Ent2 } ) do
-					if e.GetCollisionBounds then -- draws for world too, idk if that's good or not
-						local mins, maxs = e:GetCollisionBounds()
-						render.DrawWireframeBox( e:GetPos(), e:GetAngles(), mins, maxs, isEdited and color_white or color_green )
-					end
-				end
-			end
-
-			cam.End3D()
-
-		end
-
-	end
-
-	for constrID, textData in pairs( textDatas ) do
-
-		local textColor		= color_white
-		local constrTData	= textData[1]
-		local entTData		= textData[2]
-
-		if constrTData then
-			local textPos, text, font, col = unpack( constrTData )
-			draw.WordBox( bordersize, textPos.x, textPos.y, text, font, boxcolor, col or textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
-		end
-
-		if entTData then
-			local textPos, text, font = unpack( entTData )
-			draw.WordBox( bordersize, textPos.x, textPos.y, text, font, boxcolor, textColor, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
-		end
-
-	end
 end

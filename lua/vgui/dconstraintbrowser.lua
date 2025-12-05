@@ -91,7 +91,7 @@ function PANEL:GetDataPerConstrType( constrType, create )
 
 end
 
--- Adds a "folder" for that type of constraint if not already present
+-- Adds a node for that type of constraint if not already present
 function PANEL:AddConstrType( constrType )
 
 	local data = self:GetDataPerConstrType( constrType, true )
@@ -170,7 +170,7 @@ function PANEL:SortConstrTypes()
 end
 
 
--- todo: add checks for redundant constrIDs
+-- TODO: add checks for redundant constrIDs
 function PANEL:AddConstrs( surfaceConstrData )
 
 	if not istable( surfaceConstrData ) then return end
@@ -238,7 +238,7 @@ function PANEL:RemoveConstr( constrID )
 
 	constrNode:Remove()
 
-	if constrTypeNode:GetChildNodeCount() == 1 then
+	if constrTypeNode:GetChildNodeCount() <= 1 then
 		self:RemoveConstrType( constrTypeNode:GetText() ) -- using the name as a type is not good
 	end
 

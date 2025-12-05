@@ -166,7 +166,34 @@ function PANEL:ShowConstr( codedData, args )
 
 		row:SetValue( argValue )
 
+		if argType == "Entity" then
+			-- TODO: change layout function for the row
+			local buttonSwitch = row:Add( "DButton" )
+				row.Button = buttonSwitch
+				buttonSwitch:SetImage( "icon16/eye.png" )
+				buttonSwitch:SetText( "Switch entity" )
+				buttonSwitch:DockMargin(0, 1, 1, 1)
+				buttonSwitch:Dock(RIGHT)
+				local s = row:GetTall()
+				buttonSwitch:SetSize( 2 * s, s )
+				buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
+
+
+				function buttonSwitch:DoClick()
+					local ent = LocalPlayer():GetEyeTrace().Entity
+					local v = tostring( ent )
+					row.Inner:SetValue( v )
+					editor.constrData[i] = ( cacheString ~= v or nil ) and ent
+				end
+
+				local oldFunc = row.PerformLayout
+				 function row:PerformLayout()
+					oldFunc( self )
+					self.Button:SetWide( self:GetWide() * 0.1 )
+				end
+		end
 	end
+
 
 	self.ButtonPaste:SetEnabled( self:CanPaste() )
 
