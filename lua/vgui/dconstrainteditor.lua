@@ -33,7 +33,13 @@ function PANEL:Init()
 		ButtonApply:SetText( "Apply Changes" )
 
 		function ButtonApply:DoClick()
-			ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
+			local constrID = editor.constrID
+			local constrData = editor:GetConstrData()
+			if constrID then
+				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, constrData )
+			else
+				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE, constrData.Type, constrData )
+			end
 		end
 
 
@@ -137,7 +143,13 @@ function PANEL:ShowConstr( codedData, args )
 
 	local editor = self
 
-	if self.ConstraintBrowser then self.ConstraintBrowser:SelectConstrNode( constrID, constrType ) end
+	if self.ConstraintBrowser then
+		if constrID then
+			self.ConstraintBrowser:SelectConstrNode( constrID, constrType )
+		else
+			self.ConstraintBrowser:SelectTypeNode( constrType )
+		end
+	end
 
 	for i, argName in ipairs( args ) do
 
@@ -146,9 +158,12 @@ function PANEL:ShowConstr( codedData, args )
 		self.rows[i]	= row
 
 		local argValue			= codedData[i]
-		self.constrDataCache[i] = argValue
 		local argType			= type( argValue )
-		local cacheString		= tostring( argValue )
+		local cacheString
+		if constrID then
+			self.constrDataCache[i] = argValue
+			cacheString		= tostring( argValue )
+		end
 
 		if argType == "table" and IsColor( argValue ) then
 			argType = "color"

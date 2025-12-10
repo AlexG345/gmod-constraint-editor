@@ -23,7 +23,14 @@ function PANEL:Init()
 
 	function self.Tree:DoClick( node )
 		if node.constrID then
+			-- TODO: make this able to ask for data for a whole constrType
 			ConstraintEditor.RequestConstrData( node.constrID )
+		else
+			for _, constrNode in pairs( node:GetChildNodes() ) do
+				if constrNode.constrID then
+					ConstraintEditor.RequestDefConstrData( constrNode.constrID )
+				end
+			end
 		end
 	end
 
@@ -259,6 +266,18 @@ function PANEL:FindConstrNode( constrID )
 
 end
 
+
+function PANEL:FindTypeNode( constrType )
+
+	for _, constrTypeNode in pairs( self.Tree:Root():GetChildNodes() ) do
+
+		if constrTypeNode:GetText() == constrType then return constrTypeNode end
+
+	end
+
+end
+
+
 -- adding constrType lets you force the browser to add a constraint node
 function PANEL:SelectConstrNode( constrID, constrType )
 
@@ -273,6 +292,18 @@ function PANEL:SelectConstrNode( constrID, constrType )
 	constrNode:ExpandTo( true )
 
 	self.Tree:SetSelectedItem( constrNode )
+
+end
+
+
+function PANEL:SelectTypeNode( constrType )
+
+	local constrTypeNode = self:FindTypeNode( constrType )
+	if not constrTypeNode then return end
+
+	--constrTypeNode:ExpandTo( true )
+
+	self.Tree:SetSelectedItem( constrTypeNode )
 
 end
 

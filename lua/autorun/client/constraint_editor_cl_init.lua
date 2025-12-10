@@ -77,7 +77,7 @@ function ConstraintEditor.HandleNetRequests( mode )
 			constrBrowser:SetConstrs( data )
 			ConstraintEditor.Constrs = data
 
-		elseif tag == NT.SET_MENU_DEEP_DATA then
+		elseif tag == NT.SET_EDITOR_DATA then
 
 			local data = net.ReadTable()
 			constrBrowser:ShowConstr( data[1], data[2] )
@@ -102,9 +102,12 @@ end
 
 
 function ConstraintEditor.RequestConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_MENU_DEEP_DATA, constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_CONSTR_DATA, constrID )
 end
 
+function ConstraintEditor.RequestDefConstrData( constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_DEF_CONSTR_DATA, constrID )
+end
 
 function ConstraintEditor.SetEditedEntity( ent )
 	ConstraintEditor.SendDataToServer( NT.SET_EDITED_ENTITY, nil, nil, ent )
@@ -120,13 +123,15 @@ function ConstraintEditor.ForgetConstr( constrID )
 end
 
 
-function ConstraintEditor.SendDataToServer( tag, constrID, data, ent )
+-- this is cursed
+function ConstraintEditor.SendDataToServer( tag, constrIDorType, data, ent )
 
 	if not isnumber( tag ) then return end
 
 	net.Start( "constraint_editor_net" )
 		net.WriteUInt( tag, BIT_COUNT_TAG )
-		if isnumber( constrID ) then net.WriteUInt( constrID, BIT_COUNT_CONSTR_ID ) end
+		if isnumber( constrIDorType ) then net.WriteUInt( constrIDorType, BIT_COUNT_CONSTR_ID ) end
+		if isstring( constrIDorType ) then net.WriteString( constrIDorType ) end
 		if istable( data ) then net.WriteTable( data ) end
 		if isentity( ent ) then net.WriteEntity( ent ) end
 	net.SendToServer()
