@@ -1,4 +1,5 @@
 local mode = TOOL.Mode
+ConstraintEditor.mode = mode
 
 --[[
 if SERVER then
@@ -22,12 +23,15 @@ if CLIENT then
 		{ name = "right", stage = 1 },
 		{ name = "right", stage = 2 },
 		{ name = "reload1", stage = 1 },
-		{ name = "reload2", stage = 2 }
+		{ name = "reload2", stage = 2 },
+		--{ name = "reload1_use", stage = 1 },
+		--{ name = "reload2_use", stage = 2 },
 	}
 
 	TOOL.ClientConVar = {
-		["hud_show_text"] = 1,
-		["hud_beam_width_min"] = 1
+		["hud_show_text"]		= 1,
+		["hud_beam_width_min"]	= 1,
+		["transfer_mode"]		= 1
 	}
 
 	local t = "tool." .. mode .. "."
@@ -46,6 +50,8 @@ if CLIENT then
 	l( "right", "DELETE the constraint you're facing,  or stop editing current entity" )
 	l( "reload1", "Transfer all constraints from the edited entity to the one you're looking at" )
 	l( "reload2", "Transfer selected constraint from the edited entity to the one you're looking at" )
+	--l( "reload1_use", "Transfer all constraints from the edited entity to the one you're looking at" )
+	--l( "reload2_use", "Transfer selected constraint from the edited entity to the one you're looking at" )
 
 	t, l = nil, nil
 
@@ -122,6 +128,11 @@ function TOOL.BuildCPanel( cPanel )
 
 	cPanel:CheckBox( "Enable constraint type and ID display", mode .. "_hud_show_text" )
 	cPanel:NumSlider( "Minimum constraint lines width", mode .. "_hud_beam_width_min", 0.4, 20 )
+	local transferModeComboBox = cPanel:ComboBox( "Transfer mode:", mode .. "_transfer_mode" )
+	transferModeComboBox:SetTall(30)
+		transferModeComboBox:Dock(TOP)
+		transferModeComboBox:AddChoice( "World-relative constraint positions preserved", 1 )
+		transferModeComboBox:AddChoice( "Changed entities-relative constraint positions preserved", 2 )
 
 	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
 		cPanel:AddItem( constrBrowser )
@@ -134,7 +145,7 @@ end
 --[[
 -- TODO: Check if freeze is produced only clientside when clicking on ent with lots of constraints
 -- It seems to be the case but i'm unsure if i need to check FrameTime or engine.TickInterval or something else serverside.
--- Also need to check on other clients
+-- Also need to check if freeze happens on other clients
 function TOOL:Think()
 	if FrameTime() > 0.02 then
 		print( FrameTime() )
@@ -142,7 +153,6 @@ function TOOL:Think()
 end
 ]]
 
--- need to check if constraint still exists somehow
 function TOOL:DrawHUD()
 
 	ConstraintEditor.DrawHUD( self:GetClientBool("hud_show_text"), self:GetClientNumber("hud_beam_width_min"), self.ConstrTypeColor )

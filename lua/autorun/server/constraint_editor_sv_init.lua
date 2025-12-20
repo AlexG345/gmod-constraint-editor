@@ -5,21 +5,26 @@ local mode = "constraint_editor" -- name of the tool
 local NT = ConstraintEditor.NetTags
 local BIT_COUNT_TAG			= ConstraintEditor.NetBitCounts.TAG
 local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
-
+local TABLES_CLEANUP_CD		= 30 -- cooldown for table cleanup
 
 --------------------------------
 --      Various helpers       --
 --------------------------------
 
 
-local function isConstrLinkedToEnt( constr, ent )
-	return ent == constr.Ent1 or ent == ( constr.Ent2 or constr.Ent4 )
+local function isConstrLinkedToEnts( constr, entities )
+	for ent in pairs( entities or {} ) do
+		if ent == constr.Ent1 or ent == ( constr.Ent2 or constr.Ent4 ) then
+			return true
+		end
+	end
+	return false
 end
 
 
 local function findConstrWeirdKeys( constrData )
 	local ent1, ent2, ent4 = constrData.Ent1, constrData.Ent2, constrData.Ent4
-	local LPos1, LPos2, LPos, LocalAxis = constrData.LPos1, constrData.LPos2, constrData.LPos, constrData.LocalAxis
+	local LPos1, LPos2, LPos4, LPos, LocalAxis = constrData.LPos1, constrData.LPos2, constrData.LPos4, constrData.LPos, constrData.LocalAxis
 	local entKeys = {
 		ent1 and "Ent1" or nil,
 		ent2 and "Ent2" or ent4 and "Ent4" or nil
@@ -30,11 +35,32 @@ local function findConstrWeirdKeys( constrData )
 			LocalAxis and "LocalAxis" or nil
 		},
 		[2] = {
-			LPos2 and "LPos2" or LPos and "LPos" or nil
+			LPos2 and "LPos2" or LPos4 and "LPos4" or LPos and "LPos" or nil
 		}
 	}
 
 	return entKeys, posKeys
+end
+
+
+function ConstraintEditor.FindConstrsInEnts( entities, constrType )
+
+	local constrs = {}
+	local found = {}
+
+	for ent in pairs( entities or {} ) do
+
+		local c = constrType and constraint.FindConstraints( ent, constrType ) or constraint.GetTable( ent )
+
+		for _, constrTable in ipairs( c ) do
+			local constr = constrTable.Constraint
+			if constr and not found[constr] then
+				table.insert( constrs, constrTable )
+				found[constr] = true
+			end
+		end
+	end
+	return constrs
 end
 
 
@@ -223,7 +249,7 @@ function ConstraintEditor.TransferAccess( constr, newConstr, checkLink )
 
 		-- Update the menus
 		local surfaceConstrData = ConstraintEditor.GetSurfaceConstrData( newConstr )
-		if isConstrLinkedToEnt( newConstr, ConstraintEditor.GetEditedEntity( ply ) ) then
+		if isConstrLinkedToEnts( newConstr, ConstraintEditor.GetEditedEntities( ply ) ) then
 			ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrData, ply )
 		end
 
@@ -272,17 +298,23 @@ end
 -- Also clears EditedEnts if player or entity is invalid
 function ConstraintEditor.CleanupTables()
 
+	ConstraintEditor.lastTablesCleanup = CurTime()
+
 	for constrID, data in pairs( ConstraintEditor.KnownConstrs ) do
 		if not data or not IsValid( data.ent ) or next( data.allowedPlayers ) == nil then
 			ConstraintEditor.ForgetConstr( constrID )
 		end
 	end
 
-	for ply, ent in pairs( ConstraintEditor.EditedEnts ) do
+	for ply, entities in pairs( ConstraintEditor.EditedEnts ) do
 		if not IsValid( ply ) then
 			ConstraintEditor.ClearAccess( ply )
-		elseif not IsValid( ent ) then
-			ConstraintEditor.EditedEnts[ply] = nil
+		else
+			for ent in pairs( entities ) do
+				if not IsValid( ent ) then
+					ConstraintEditor.EditedEnts[ply][ent] = nil
+				end
+			end
 		end
 	end
 
@@ -291,9 +323,7 @@ end
 
 -- Don't clean up tables if it was already done not long ago
 function ConstraintEditor.TryCleanupTables()
-	local now = CurTime()
-	if now - ( ConstraintEditor.lastTablesCleanup or 0 ) < 30 then return end
-	ConstraintEditor.lastTablesCleanup = now
+	if CurTime() - ( ConstraintEditor.lastTablesCleanup or 0 ) < TABLES_CLEANUP_CD then return end
 
 	ConstraintEditor.CleanupTables()
 end
@@ -308,36 +338,39 @@ function ConstraintEditor.DeleteConstr( constr )
 end
 
 
-function ConstraintEditor.SetEditedEntity( ent, ply )
+-- Let ply edit all constraints attached to ent
+function ConstraintEditor.AddEditedEntity( ent, ply )
 
-	if not isentity( ent ) then ent = NULL end
+	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end
 
-	if not ply or ( ent ~= NULL and not ConstraintEditor.AccessEntity( ply, ent, 1 ) ) then return end
+	if not ConstraintEditor.EditedEnts[ply] then ConstraintEditor.EditedEnts[ply] = {} end
 
-	ConstraintEditor.ClearAccess( ply )
-
-	ConstraintEditor.EditedEnts[ply] = ent
+	ConstraintEditor.EditedEnts[ply][ent] = ent
 
 	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
 	local tool = ply.GetTool and ply:GetTool( mode )
 
-	if not constrs then
-		--ConstraintEditor.ClearAccess( ply )
-		ConstraintEditor.SendDataToClient( NT.SET_SHOWN_CONSTRS, {}, ply )
-		if tool then tool:SetStage( 0 ) end
-		return
-	end
 	if tool then tool:SetStage( 1 ) end
 
 	for constrID, constr in pairs( constrs ) do
 		ConstraintEditor.SetAccess( ply, constrID, true, constr )
 	end
-	ConstraintEditor.SendDataToClient( NT.SET_SHOWN_CONSTRS, surfaceConstrsData, ply )
+	ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrsData, ply )
 
 end
 
 
-function ConstraintEditor.GetEditedEntity( ply )
+function ConstraintEditor.ClearEditedEntities( ply )
+
+	ConstraintEditor.ClearAccess(ply)
+	ConstraintEditor.SendDataToClient( NT.CLEAR_SHOWN_CONSTRS, nil, ply )
+	local tool = ply.GetTool and ply:GetTool( mode )
+	if tool then tool:SetStage( 0 ) end
+
+end
+
+
+function ConstraintEditor.GetEditedEntities( ply )
 
 	return ConstraintEditor.EditedEnts[ply]
 
@@ -498,6 +531,8 @@ function ConstraintEditor.CompleteConstrData( refConstrData, constrData, desc, p
 
 	end
 
+	if not constrData.Type then constrData.Type = refConstrData.Type end
+
 	return isChanged
 
 end
@@ -508,22 +543,26 @@ local function LocalToWorldConstrData( constrData, overwrite )
 	local entKeys, posKeys = findConstrWeirdKeys( constrData )
 	local worldConstrData = overwrite and constrData or table.Copy( constrData )
 	local entities = {}
+	local world = game.GetWorld()
 
 	for i, entKey in pairs( entKeys ) do
 
 		local ent = constrData[entKey]
 		table.insert( entities, ent )
-		worldConstrData[entKey] = game.GetWorld()
+		if ent:IsWorld() then continue end
+
+		worldConstrData[entKey] = world
+
 		for _, posKey in pairs( posKeys[i] ) do
 
 			local localPos = constrData[posKey]
-			-- only the key name gives info on which entity (1st or 2nd) the world pos targets
-			-- but that's just how it already works..
 			worldConstrData[posKey] = ent:LocalToWorld( localPos )
 
 		end
 	end
+
 	return worldConstrData, entities
+
 end
 
 
@@ -535,15 +574,18 @@ local function WorldToLocalConstrData( worldConstrData, entities, overwrite )
 	for i, entKey in pairs( entKeys ) do
 
 		local ent = entities[entKey] or entities[i]
-		if not ent:IsWorld() then
-			for _, posKey in pairs( posKeys[i] ) do
-				local worldPos = constrData[posKey]
-				constrData[posKey] = ent:WorldToLocal( worldPos )
-			end
-			constrData[entKey] = ent
+		if ent:IsWorld() then continue end
+
+		for _, posKey in pairs( posKeys[i] ) do
+			local worldPos = constrData[posKey]
+			constrData[posKey] = ent:WorldToLocal( worldPos )
 		end
+		constrData[entKey] = ent
+
 	end
+
 	return constrData
+
 end
 
 
@@ -553,8 +595,9 @@ end
 
 
 local function saveBuildDupeInfo( BuildDupeInfo, data, entKeys )
+	if not BuildDupeInfo then return end
 	local first, second = data[1], data[2]
-	BuildDupeInfo.EntityPos = first.ent:GetPos() - second.ent:GetPos()
+	if first and second then BuildDupeInfo.EntityPos = first.ent:GetPos() - second.ent:GetPos() end
 	for i, entData in pairs( data ) do
 		BuildDupeInfo[entKeys[i] .. "Pos"] = entData.ent:GetPos()
 		BuildDupeInfo[entKeys[i] .. "Ang"] = entData.ent:GetAngles()
@@ -599,7 +642,7 @@ end
 -- modified from advdupe2
 -- current version works perfectly if world is not involved?
 -- removes positional/angles error: puts constraint and associated entities back to their initial state
-local function applyBuildDupeInfo( BuildDupeInfo, constrData, entKeys, relocalizeEntIndex )
+local function applyBuildDupeInfo( BuildDupeInfo, constrData, entKeys, staticEntIndex )
 
 	if not BuildDupeInfo then return end
 
@@ -659,10 +702,10 @@ local function applyBuildDupeInfo( BuildDupeInfo, constrData, entKeys, relocaliz
 	end
 
 	-- dirty hack
-	if relocalizeEntIndex then
+	if staticEntIndex then
 
-		local followed = data[relocalizeEntIndex]
-		local follower = data[1 + relocalizeEntIndex % 2]
+		local followed = data[staticEntIndex]
+		local follower = data[1 + staticEntIndex % 2]
 
 		local localAng = followed.ent:WorldToLocalAngles( follower.ent:GetAngles() )
 		local localPos = followed.ent:WorldToLocal( follower.ent:GetPos() )
@@ -687,31 +730,18 @@ end
 --     Entity change (WIP)    --
 --------------------------------
 
+-- does not restore positions
+local function convertApplyBuildDupeInfo( BuildDupeInfo, constrData, newEnt, i, entKeys )
 
--- TODO: check pulley since it doesn't seem to update LPos properly ?
--- it has something to do with Ent4 not being used? while Ent1 works properly for Pulley?
-
--- Changes newConstrData by assuming that its i-th entity has been changed from ent to newEnt
--- The objective is that the new constraint (created using constrData) keeps the same behavior, world position and world rotation as the original constraint
--- newConstrData MUST have str keys (such as LPos1, LPos2, etc )
--- Returns true only if some data has been changed
-
--- world attached advanced ballsockets are not properly restored!!
-local function restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, ent, newEnt, i, entKey, posKeys, disableMotion )
-
-	if not ( isentity( ent ) and isentity( newEnt ) ) or ent == newEnt then return false end
-
-	constrData[entKey] = ent
-	local entKeys = findConstrWeirdKeys( constrData )
-
+	local entKey = entKeys[i]
 	local data
 	local j = 1 + i % 2
-	local otherEnt = constrData[entKeys[j]]
+	local ent, otherEnt = constrData[entKey], constrData[entKeys[j]]
 
-	if BuildDupeInfo then
+	-- when newEnt == otherEnt things break
+	if BuildDupeInfo and not ( newEnt == otherEnt or ent:IsWorld() and otherEnt:IsWorld() ) then
 
 		local isFirst = i == 1
-		--local firstEnt = constrData[entKeys[1]]
 
 		local entAng = ent:GetAngles()
 		local newEntLocalPos = ent:WorldToLocal( newEnt:GetPos() )
@@ -737,39 +767,92 @@ local function restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, e
 		end
 	end
 
+	return data, { [i] = newEnt, [j] = otherEnt }
+
+end
+
+-- Changes newConstrData by assuming that its i-th entity has been changed from ent to newEnt
+-- The objective is that the new constraint (created using constrData) keeps the same behavior, world position and world rotation as the original constraint
+-- newConstrData MUST have str keys (such as LPos1, LPos2, etc )
+-- Returns true only if some data has been changed
+
+-- TODO: find if it's possible to restore world attached advanced ballsockets properly
+local function restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, ent, i, entKeys )
+
+	local entKey = entKeys[i]
+	local newEnt = constrData[entKey] or constrData[i]
+
+	if not ( isentity( ent ) and isentity( newEnt ) ) or ent == newEnt then return false end
+
+	constrData[entKey] = ent
+
+	local data, newEntities = convertApplyBuildDupeInfo( BuildDupeInfo, constrData, newEnt, i, entKeys )
+
 	LocalToWorldConstrData( constrData, true )
 	constrData[entKey] = newEnt
-	WorldToLocalConstrData( constrData, { [i] = newEnt, [j] = otherEnt }, true )
+	WorldToLocalConstrData( constrData, newEntities, true )
 
-	if BuildDupeInfo then restoreAfterBuildDupeInfo( data ) end
+	if data then restoreAfterBuildDupeInfo( data ) end
 
 	return true
 
 end
 
--- WORK IN PROGRESS
--- TODO: use actual variables
--- TODO: test with builddupeinfo
---[[
-local function imitateConstr()
 
-	-- Let's first send all the data to the world:
+local function imitateConstr( constrData, BuildDupeInfo, ent, i, entKeys )
+
+	local entKey = entKeys[i]
+	local newEnt = constrData[entKey] or constrData[i]
+
+	if not ( isentity( ent ) and isentity( newEnt ) ) or ent == newEnt then return false end
+
+	constrData[entKey] = ent
+
+	local j = 1 + i % 2
+	local otherEnt = constrData[entKeys[j]]
+	local data, entities = applyBuildDupeInfo( BuildDupeInfo, constrData, entKeys, j ), { [i] = newEnt, [j] = otherEnt }
+	data = data or {}
+	data.new = {
+		ent			= newEnt,
+		posReset	= newEnt:GetPos(),
+		angReset	= newEnt:GetAngles()
+	}
+
+	-- Attach the constraint positions to newEnt
+	local otherLocalPos = newEnt:WorldToLocal( otherEnt:GetPos() )
+	local otherLocalAngles = newEnt:WorldToLocalAngles( otherEnt:GetAngles() )
+	if not newEnt:IsWorld() then
+		newEnt:SetPos( ent:GetPos() )
+		newEnt:SetAngles( ent:GetAngles() )
+	end
+
+	--debugoverlay.Cross( ent:LocalToWorld(constrData.LPos2), 50, 6, Color( 0, 255, 0 ), false )
+	--debugoverlay.Cross( otherEnt:LocalToWorld(constrData.LPos1), 50, 6, Color( 255, 255, 0 ), false )
 	LocalToWorldConstrData( constrData, true )
+	--debugoverlay.Cross( constrData.LPos1, 50, 6, Color( 255, 0, 0 ), false )
+	--debugoverlay.Cross( constrData.LPos2, 50, 6, Color( 50, 100, 255 ), false )
+	WorldToLocalConstrData( constrData, { newEnt, newEnt }, true )
 
-	-- Attach the data to newWheel
-	posReset, angReset = newWheel:GetPos(), newWheel:GetAngles()
-	newWheel:SetPos( wheel:GetPos() )
-	newWheel:SetAngles( wheel:GetAngles() )
-	WorldToLocalConstrData(constrData, { newWheel, newWheel }, true)
+	if not otherEnt:IsWorld() then
+		otherEnt:SetPos( newEnt:LocalToWorld( otherLocalPos ) )
+		otherEnt:SetAngles( newEnt:LocalToWorldAngles( otherLocalAngles ) )
+	end
 
-	-- move back newWheel to its position and its angles
-	newWheel:SetPos(posReset) newWheel:SetAngles(angReset)
-
-	-- Reassign proper entities
+	saveBuildDupeInfo( BuildDupeInfo, { [i] = data.new, [j] = data[j] }, entKeys )
 	LocalToWorldConstrData(constrData, true)
-	WorldToLocalConstrData(constrData, { [i] = newWheel, [j] = forklift }, true)
+	WorldToLocalConstrData(constrData, entities, true)
+
+	restoreAfterBuildDupeInfo( data )
+
+	-- assign new entities
+
+	--saveBuildDupeInfo( BuildDupeInfo, { [i] = data.new, [j] = data[j] }, entKeys )
+
+	--if data then restoreAfterBuildDupeInfo( data ) end
+
+	return true
+
 end
-]]
 
 
 
@@ -779,18 +862,20 @@ end
 -- The objective is that the new constraint (created using constrData) keeps the same behavior, world position and world rotation as the original constraint
 -- This function does not freeze the entities hence it's unsafe when used alone
 -- Does not work with ragdolls.
-local function restoreConstrBehaviorAfterEntsChange( oldEnts, constrData, BuildDupeInfo, disableMotion )
+local function restoreConstrBehaviorAfterEntsChange( oldEnts, constrData, BuildDupeInfo, transferMode )
 
 	if not ( oldEnts and constrData ) then return end
 
-	local entKeys, posKeys = findConstrWeirdKeys( constrData )
+	local entKeys = findConstrWeirdKeys( constrData )
 	local update = false
+
+	local transferFunc = transferMode == 1 and restoreConstrBehaviorAfterEntChange or transferMode == 2 and imitateConstr
+	if not transferFunc then return end
 
 	for i, entKey in pairs( entKeys ) do
 
-		local ent		= oldEnts[entKey] or oldEnts[i]
-		local newEnt	= constrData[entKey] or constrData[i]
-		update = restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, ent, newEnt, i, entKey, posKeys, disableMotion ) or update
+		local ent	= oldEnts[entKey] or oldEnts[i]
+		update = transferFunc( constrData, BuildDupeInfo, ent, i, entKeys ) or update
 
 	end
 
@@ -828,6 +913,7 @@ end
 -- Apply changeConstrEnts to each constraint in constrs (from constraint.GetTable for example) considering entChange table
 function ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
+	PrintTable(entChange)
 	for _, newEnt in pairs( entChange ) do
 		if not ( isentity( newEnt ) and ( newEnt:IsValid() or newEnt:IsWorld() ) ) then return false end
 	end
@@ -854,7 +940,9 @@ end
 
 local function createConstrBlindly( factory, constrData, ply, constrType )
 	local ok, constr, rope = pcall( factory, unpack( constrData, 1, #constrData ) )
+	print( ok, constr, rope, "error:", ply and not (ok and constr), "type:", constrType)
 	if ply and not ( ok and constr ) then
+		PrintTable( constrData )
 		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constrType or "unknown type" .. " constraint properly!" )
 	end
 	return constr, rope
@@ -939,7 +1027,9 @@ function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, re
 
 	local BuildDupeInfo = copyBuildDupeInfo( constr.BuildDupeInfo )
 
-	if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, true ) end
+	local cvar = GetConVar( mode .. "_transfer_mode" )
+	local transferMode = cvar and cvar:GetInt() or 1
+	if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, transferMode ) end
 
 	local newConstr = ConstraintEditor.CreateConstr( newConstrData, BuildDupeInfo, desc.Func, ply, not delete, not delete )
 
@@ -1113,13 +1203,13 @@ end
 
 local netFunctions = {
 
-	[NT.UNSET_EDITED_ENTITY] = function( ply )
-		ConstraintEditor.SetEditedEntity( nil, ply )
+	[NT.CLEAR_EDITED_ENTS] = function( ply )
+		ConstraintEditor.ClearEditedEntities( ply )
 	end,
 
-	[NT.SET_EDITED_ENTITY] = function( ply )
+	[NT.ADD_EDITED_ENTITY] = function( ply )
 		local ent = net.ReadEntity()
-		ConstraintEditor.SetEditedEntity( ent, ply )
+		ConstraintEditor.AddEditedEntity( ent, ply, true )
 	end,
 
 	[NT.GET_CONSTR_DATA] = function( ply )
@@ -1151,9 +1241,9 @@ local netFunctions = {
 	[NT.UPDATE_TYPE] = function( ply )
 		local constrType = net.ReadString()
 		local newConstrData = net.ReadTable()
-		local editedEnt = ConstraintEditor.GetEditedEntity( ply )
-		if not ( constrType and newConstrData and editedEnt ) then return end
-		local constrs = constraint.GetTable( editedEnt )
+		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
+		if not ( constrType and newConstrData and editedEnts ) then return end
+		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts, constrType )
 		for _, constr in pairs( constrs ) do
 			constr = constr.Constraint
 			constr = ConstraintEditor.Access( ply, constr:GetCreationID() )
@@ -1166,18 +1256,29 @@ local netFunctions = {
 	[NT.TRANSFER_CONSTR_ENTS] = function( ply )
 		local constr = getNetConstr( ply )
 		local newEnt = ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
-		local editedEnt = ConstraintEditor.GetEditedEntity( ply )
-		if not ( newEnt and editedEnt ) then return end
+
+		local editedEnts = ConstraintEditor.GetEditedEntities( ply ) or {}
+		if not ( newEnt and editedEnts ) then return end
+		local entChange = {}
+		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
+
 		ConstraintEditor.SetEditedConstr( nil, ply )
-		ConstraintEditor.ChangeConstrsEnts( { [editedEnt] = newEnt }, { constr }, ply, true )
+		-- try transferring and stop once it's done once? (for k ,v ... do if change then return end end)
+		ConstraintEditor.ChangeConstrsEnts( entChange, { constr }, ply, true )
 	end,
 
 	[NT.TRANSFER_CONSTRS_ENTS] = function( ply )
 		local newEnt = ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
-		local editedEnt = ConstraintEditor.GetEditedEntity( ply )
-		if not ( newEnt and editedEnt ) then return end
+
+		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
+		if not ( newEnt and editedEnts ) then return end
+		local entChange = {}
+		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
+
+		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts )
+
 		ConstraintEditor.SetEditedConstr( nil, ply )
-		ConstraintEditor.ChangeConstrsEnts( { [editedEnt] = newEnt }, constraint.GetTable( editedEnt ), ply, true )
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
 	end,
 }
 
@@ -1189,7 +1290,6 @@ function ConstraintEditor.HandleNetRequests()
 		if not ( ply and ply:IsPlayer() ) then return end
 
 		local tag = net.ReadUInt( BIT_COUNT_TAG )
-
 		netFunctions[tag]( ply )
 
 	end )

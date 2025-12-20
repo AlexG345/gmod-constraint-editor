@@ -1,7 +1,7 @@
 local PANEL = {}
 
 local NT = ConstraintEditor.NetTags
-
+local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
 
 
 function PANEL:Init()
@@ -36,9 +36,9 @@ function PANEL:Init()
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
-				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, constrData )
+				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID }, { constrData } )
 			else
-				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE, constrData.Type, constrData )
+				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData.Type }, { constrData } )
 			end
 		end
 
@@ -49,7 +49,7 @@ function PANEL:Init()
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
 		function ButtonDuplicate:DoClick()
-			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, editor.constrID )
+			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID } )
 		end
 
 
@@ -59,7 +59,7 @@ function PANEL:Init()
 		ButtonDelete:SetText( "Remove Constraint" )
 
 		function ButtonDelete:DoClick()
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, editor.constrID )
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID } )
 		end
 
 
@@ -154,8 +154,6 @@ function PANEL:ShowConstr( codedData, args )
 	for i, argName in ipairs( args ) do
 
 		self.argsOrder[argName] = i
-		local row		= self.Properties:CreateRow( "Constraint Properties", argName )
-		self.rows[i]	= row
 
 		local argValue			= codedData[i]
 		local argType			= type( argValue )
@@ -171,17 +169,33 @@ function PANEL:ShowConstr( codedData, args )
 
 		local typeRestore = self.typeRestoreFuncs[argType]
 
+		local row		= self.Properties:CreateRow( "Constraint Properties", argName )
+		self.rows[i]	= row
 		row:Setup( argType == "boolean" and "Bool" or "Generic", { readonly = not typeRestore } )
 
-		function row:DataChanged( v )
+		--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
+		local r, g, b, a = 140, 220, 100, 100
 
-			editor.constrData[i] = ( cacheString ~= v or nil ) and typeRestore( v )
+		function row:DataChanged( v )
+			self:SetValue( v )
+		end
+
+		function row:SetValue( v, isOriginal, doInner )
+
+			if not isOriginal then v = typeRestore( v ) end
+			stringV = tostring( v )
+			if doInner then row.Inner:SetValue( stringV ) end
+			local changed = cacheString ~= stringV
+			self:SetBGColor( r, g, b, a )
+			self:SetPaintBackgroundEnabled( changed )
+			editor.constrData[i] = ( changed or nil ) and v
 
 		end
 
-		row:SetValue( argValue )
+		row:SetValue( argValue, true, true )
 
 		if argType == "Entity" then
+
 			-- TODO: change layout function for the row
 			local buttonSwitch = row:Add( "DButton" )
 				row.Button = buttonSwitch
@@ -195,10 +209,7 @@ function PANEL:ShowConstr( codedData, args )
 
 
 				function buttonSwitch:DoClick()
-					local ent = LocalPlayer():GetEyeTrace().Entity
-					local v = tostring( ent )
-					row.Inner:SetValue( v )
-					editor.constrData[i] = ( cacheString ~= v or nil ) and ent
+					row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
 				end
 
 				local oldFunc = row.PerformLayout

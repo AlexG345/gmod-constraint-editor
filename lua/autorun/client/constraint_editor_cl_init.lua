@@ -22,95 +22,113 @@ function ConstraintEditor.GetTestTable( constrID )
 end
 ]]
 
--- these elseif are getting out of hand
-function ConstraintEditor.HandleNetRequests( mode )
+
+local function getConstrBrowser()
+	local cPanel = controlpanel.Get( ConstraintEditor.mode )
+	return cPanel and cPanel.constrBrowser
+end
+
+
+local netFunctions = {
+
+	[NT.LEFT_CLICK] = function()
+		local ent = net.ReadEntity()
+		local hCID = ConstraintEditor.HoveredConstrID
+		if not hCID or hCID < 0 then
+			if not LocalPlayer():KeyDown( IN_SPEED ) then
+				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
+			end
+			ConstraintEditor.AddEditedEntity( ent )
+		else
+			ConstraintEditor.GetConstrData( hCID )
+		end
+	end,
+
+	[NT.RIGHT_CLICK] = function()
+		local hCID = ConstraintEditor.HoveredConstrID
+		if not hCID or hCID < 0 then
+			ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
+		else
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { hCID, BIT_COUNT_CONSTR_ID } )
+		end
+	end,
+
+	[NT.RELOAD] = function()
+
+		local constrBrowser	= getConstrBrowser()
+		local constrEditor	= constrBrowser and constrBrowser.ConstraintEditor
+		local constrID		= constrEditor and constrEditor.constrID
+
+		local ply = LocalPlayer()
+		local ent = ply:GetEyeTrace().Entity
+
+		if constrID and constrID >= 0 then
+			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTR_ENTS, { constrID, BIT_COUNT_CONSTR_ID }, { ent } )
+		else
+			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTRS_ENTS, { ent } )
+		end
+
+	end,
+
+	[NT.CLEAR_SHOWN_CONSTRS] = function()
+		ConstraintEditor.Constrs = {}
+
+		local constrBrowser	= getConstrBrowser()
+		if IsValid( constrBrowser ) then constrBrowser:Clear() end
+	end,
+
+	[NT.SET_EDITOR_DATA] = function()
+		local data = net.ReadTable()
+
+		local constrBrowser	= getConstrBrowser()
+		if not IsValid( constrBrowser ) then return end
+
+		constrBrowser:ShowConstr( data[1], data[2] )
+	end,
+
+	[NT.FORGET_CONSTR] = function()
+		local constrID = net.ReadUInt( BIT_COUNT_CONSTR_ID )
+
+		local constrBrowser	= getConstrBrowser()
+		if IsValid( constrBrowser ) then constrBrowser:RemoveConstr( constrID ) end
+
+		ConstraintEditor.ForgetConstr( constrID )
+	end,
+
+	[NT.ADD_SHOWN_CONSTRS] = function()
+		local data = net.ReadTable()
+
+		local constrBrowser	= getConstrBrowser()
+		if IsValid( constrBrowser ) then constrBrowser:AddConstrs( data ) end
+
+		table.Merge( ConstraintEditor.Constrs, data )
+	end
+
+}
+
+
+function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, _ )
 
-		local tag	= net.ReadUInt( BIT_COUNT_TAG )
-
-		local cPanel		= controlpanel.Get( mode )
-		local constrBrowser	= cPanel.constrBrowser
-		if not IsValid( constrBrowser ) then return end
-
-		if tag == NT.LEFT_CLICK then
-
-			local ent = net.ReadEntity()
-			local hCID = ConstraintEditor.HoveredConstrID
-			if not hCID or hCID == -1 then
-				ConstraintEditor.SetEditedEntity( ent )
-			else
-				ConstraintEditor.RequestConstrData( hCID )
-			end
-
-		elseif tag == NT.RIGHT_CLICK then
-
-			local hCID = ConstraintEditor.HoveredConstrID
-			if not hCID or hCID < 0 then
-				ConstraintEditor.SendDataToServer( NT.UNSET_EDITED_ENTITY )
-			else
-				ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, hCID )
-			end
-
-		elseif tag == NT.RELOAD then
-
-			local editor = constrBrowser.ConstraintEditor
-			local constrID = editor and editor.constrID
-			local ent = LocalPlayer():GetEyeTrace().Entity
-
-			if constrID and constrID >= 0 then
-				ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTR_ENTS, constrID, nil, ent )
-			else
-				ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTRS_ENTS, nil, nil, ent )
-			end
-
-			--[[
-			local editor = constrBrowser.ConstraintEditor
-			if editor then
-				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, editor.constrID, editor:GetConstrData() )
-			end
-			]]
-
-		elseif tag == NT.SET_SHOWN_CONSTRS then
-
-			local data = net.ReadTable() or {}
-			constrBrowser:SetConstrs( data )
-			ConstraintEditor.Constrs = data
-
-		elseif tag == NT.SET_EDITOR_DATA then
-
-			local data = net.ReadTable()
-			constrBrowser:ShowConstr( data[1], data[2] )
-
-		elseif tag == NT.FORGET_CONSTR then
-
-			local constrID = net.ReadUInt( 24 )
-			constrBrowser:RemoveConstr( constrID )
-			ConstraintEditor.ForgetConstr( constrID )
-
-		elseif tag == NT.ADD_SHOWN_CONSTRS then
-
-			local data = net.ReadTable()
-			constrBrowser:AddConstrs( data )
-			table.Merge( ConstraintEditor.Constrs, data )
-
-		end
+		local tag = net.ReadUInt( BIT_COUNT_TAG )
+		netFunctions[tag]()
 
 	end )
 
 end
 
 
-function ConstraintEditor.RequestConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_CONSTR_DATA, constrID )
+function ConstraintEditor.GetConstrData( constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_CONSTR_DATA, { constrID, BIT_COUNT_CONSTR_ID } )
 end
 
-function ConstraintEditor.RequestDefConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_DEF_CONSTR_DATA, constrID )
+function ConstraintEditor.GetDefaultConstrData( constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_DEF_CONSTR_DATA, { constrID, BIT_COUNT_CONSTR_ID } )
 end
 
-function ConstraintEditor.SetEditedEntity( ent )
-	ConstraintEditor.SendDataToServer( NT.SET_EDITED_ENTITY, nil, nil, ent )
+function ConstraintEditor.AddEditedEntity( ent )
+	ConstraintEditor.SendDataToServer( NT.ADD_EDITED_ENTITY, { ent } )
 end
 
 
@@ -123,26 +141,32 @@ function ConstraintEditor.ForgetConstr( constrID )
 end
 
 
--- this is cursed
-function ConstraintEditor.SendDataToServer( tag, constrIDorType, data, ent )
+function ConstraintEditor.SendDataToServer( tag, ... )
 
 	if not isnumber( tag ) then return end
-
 	net.Start( "constraint_editor_net" )
 		net.WriteUInt( tag, BIT_COUNT_TAG )
-		if isnumber( constrIDorType ) then net.WriteUInt( constrIDorType, BIT_COUNT_CONSTR_ID ) end
-		if isstring( constrIDorType ) then net.WriteString( constrIDorType ) end
-		if istable( data ) then net.WriteTable( data ) end
-		if isentity( ent ) then net.WriteEntity( ent ) end
+		for _, tab in ipairs( { ... } ) do
+			local v, arg = tab[1], tab[2]
+			local write = ConstraintEditor.NetWriteFuncs[ TypeID( v ) ]
+			if write then write( v, arg ) end
+		end
+
 	net.SendToServer()
 
 end
 
 
-
 --------------------------------
 --        HUD Drawing         --
 --------------------------------
+
+--[[ added soon
+local color_red = Color( 255, 0, 0 )
+hook.Add( "PreDrawHalos", "AddPropHalos", function()
+	halo.Add( ConstraintEditor.SpecialEnts or {}, color_red, 5, 5, 2 )
+end )
+]]
 
 
 local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover, highlightEnts

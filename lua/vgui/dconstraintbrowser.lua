@@ -24,11 +24,12 @@ function PANEL:Init()
 	function self.Tree:DoClick( node )
 		if node.constrID then
 			-- TODO: make this able to ask for data for a whole constrType
-			ConstraintEditor.RequestConstrData( node.constrID )
+			ConstraintEditor.GetConstrData( node.constrID )
 		else
 			for _, constrNode in pairs( node:GetChildNodes() ) do
 				if constrNode.constrID then
-					ConstraintEditor.RequestDefConstrData( constrNode.constrID )
+					ConstraintEditor.GetDefaultConstrData( constrNode.constrID )
+					return
 				end
 			end
 		end
@@ -117,6 +118,7 @@ function PANEL:RemoveConstrType( constrType, data )
 	if istable( data ) and data.panel then
 		data.panel:Remove()
 		data.panel = nil
+		data.constrNodes = nil
 	end
 
 end
@@ -185,10 +187,13 @@ function PANEL:AddConstrs( surfaceConstrData )
 	for constrType, constrData in pairs( surfaceConstrData ) do
 
 		local data = self:AddConstrType( constrType )
+		data.constrNodes = data.constrNodes or {}
 		local constrTypeNode = data.panel
 
 		for constrID, _ in pairs( constrData ) do
-			self:AddConstrToNode( constrTypeNode, constrID )
+			if not data.constrNodes[constrID] then
+				data.constrNodes[constrID] = self:AddConstrToNode( constrTypeNode, constrID )
+			end
 		end
 
 	end
@@ -202,23 +207,19 @@ function PANEL:AddConstrToNode( constrTypeNode, constrID )
 
 	local node = constrTypeNode:AddNode( ( "[%s]" ):format( constrID ), "icon16/application_view_columns.png" )
 	node.constrID = constrID
+	return node
 
 end
 
-
+--[[
 function PANEL:SetConstrs( surfaceConstrData )
 
 	self:Clear()
 	self:ShowConstr()
-	--[[
-	if table.IsEmpty( surfaceConstrData ) then
-		self:ShowConstr()
-		return
-	end
-	]]
 	self:AddConstrs( surfaceConstrData )
 
 end
+]]
 
 
 function PANEL:ShowConstr( codedData, args )
@@ -239,14 +240,15 @@ function PANEL:RemoveConstr( constrID )
 		editor:ShowConstr() -- clear
 	end
 
-	local constrNode = self:FindConstrNode( constrID )
+	local constrNode, constrNodes, constrType = self:FindConstrNode( constrID )
 	if not constrNode then return end
-	local constrTypeNode = constrNode:GetParentNode()
 
+	constrNodes[constrID] = nil
+	local constrTypeNode = constrNode:GetParentNode()
 	constrNode:Remove()
 
 	if constrTypeNode:GetChildNodeCount() <= 1 then
-		self:RemoveConstrType( constrTypeNode:GetText() ) -- using the name as a type is not good
+		self:RemoveConstrType( constrType )
 	end
 
 end
@@ -254,13 +256,11 @@ end
 
 function PANEL:FindConstrNode( constrID )
 
-	for _, constrTypeNode in pairs( self.Tree:Root():GetChildNodes() ) do
+	for constrType, data in pairs( self.DataPerConstrType ) do
 
-		for _, constrNode in pairs( constrTypeNode:GetChildNodes() ) do
-
-			if constrNode.constrID == constrID then return constrNode end
-
-		end
+		local constrNodes = data.constrNodes
+		local constrNode = constrNodes and constrNodes[constrID]
+		if constrNode then return constrNode, constrNodes, constrType end
 
 	end
 
