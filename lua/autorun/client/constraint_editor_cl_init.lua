@@ -1,13 +1,18 @@
-
-local mode = "constraint_editor" -- name of the tool
-
 local NT = ConstraintEditor.NetTags
-local BIT_COUNT_TAG			= ConstraintEditor.NetBitCounts.TAG
-local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
+local BIT_COUNT = ConstraintEditor.NetBitCounts
 
 
 ConstraintEditor.Constrs = {}
 ConstraintEditor.HoveredConstrID = -1 -- for the stool
+ConstraintEditor.Halos = {}
+
+ConstraintEditor.EditModes = {
+	NONE	= 0,
+	SINGLE	= 1,
+	MANY	= 2
+}
+
+local EM = ConstraintEditor.EditModes
 
 --[[
 function ConstraintEditor.GetTestTable( constrID )
@@ -24,8 +29,32 @@ end
 
 
 local function getConstrBrowser()
-	local cPanel = controlpanel.Get( ConstraintEditor.mode )
+	local cPanel = controlpanel.Get( ConstraintEditor.Mode )
 	return cPanel and cPanel.constrBrowser
+end
+
+local function getConstrEditor()
+	local constrBrowser = getConstrBrowser()
+	return constrBrowser and constrBrowser.constraintEditor
+end
+
+
+function ConstraintEditor.ToNetConstrIDs( constrIDs )
+
+	if not constrIDs then return end
+
+	local tab = { { 0, BIT_COUNT.ENT_COUNT } }
+	local constrCount = 0
+
+	for constrID, b in pairs( constrIDs ) do
+		if b then
+			table.insert( tab, { constrID, BIT_COUNT.CONSTR_ID } )
+			constrCount = constrCount + 1
+		end
+	end
+
+	tab[1][1] = constrCount
+	return unpack( tab )
 end
 
 
@@ -34,13 +63,19 @@ local netFunctions = {
 	[NT.LEFT_CLICK] = function()
 		local ent = net.ReadEntity()
 		local hCID = ConstraintEditor.HoveredConstrID
+		local clear = not LocalPlayer():KeyDown( IN_SPEED )
 		if not hCID or hCID < 0 then
-			if not LocalPlayer():KeyDown( IN_SPEED ) then
+			if clear then
 				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
 			end
 			ConstraintEditor.AddEditedEntity( ent )
 		else
-			ConstraintEditor.GetConstrData( hCID )
+			if clear then
+				local constrEditor	= getConstrEditor()
+				constrEditor:ClearEdited()
+			end
+			ConstraintEditor.EditConstrs( hCID )
+			-- server will do: ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
 		end
 	end,
 
@@ -49,21 +84,20 @@ local netFunctions = {
 		if not hCID or hCID < 0 then
 			ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
 		else
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { hCID, BIT_COUNT_CONSTR_ID } )
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { hCID, BIT_COUNT.CONSTR_ID } )
 		end
 	end,
 
 	[NT.RELOAD] = function()
 
-		local constrBrowser	= getConstrBrowser()
-		local constrEditor	= constrBrowser and constrBrowser.ConstraintEditor
+		local constrEditor	= getConstrEditor()
 		local constrID		= constrEditor and constrEditor.constrID
 
 		local ply = LocalPlayer()
 		local ent = ply:GetEyeTrace().Entity
 
 		if constrID and constrID >= 0 then
-			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTR_ENTS, { constrID, BIT_COUNT_CONSTR_ID }, { ent } )
+			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTR_ENTS, { constrID, BIT_COUNT.CONSTR_ID }, { ent } )
 		else
 			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTRS_ENTS, { ent } )
 		end
@@ -77,17 +111,17 @@ local netFunctions = {
 		if IsValid( constrBrowser ) then constrBrowser:Clear() end
 	end,
 
-	[NT.SET_EDITOR_DATA] = function()
+	[NT.FILL_EDITOR] = function()
 		local data = net.ReadTable()
 
-		local constrBrowser	= getConstrBrowser()
-		if not IsValid( constrBrowser ) then return end
+		local constrEditor = getConstrEditor()
+		if not ( data and IsValid( constrEditor ) ) then return end
 
-		constrBrowser:ShowConstr( data[1], data[2] )
+		constrEditor:Fill( data[1], data[2] )
 	end,
 
 	[NT.FORGET_CONSTR] = function()
-		local constrID = net.ReadUInt( BIT_COUNT_CONSTR_ID )
+		local constrID = net.ReadUInt( BIT_COUNT.CONSTR_ID )
 
 		local constrBrowser	= getConstrBrowser()
 		if IsValid( constrBrowser ) then constrBrowser:RemoveConstr( constrID ) end
@@ -111,7 +145,7 @@ function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, _ )
 
-		local tag = net.ReadUInt( BIT_COUNT_TAG )
+		local tag = net.ReadUInt( BIT_COUNT.TAG )
 		netFunctions[tag]()
 
 	end )
@@ -119,13 +153,38 @@ function ConstraintEditor.HandleNetRequests()
 end
 
 
-function ConstraintEditor.GetConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_CONSTR_DATA, { constrID, BIT_COUNT_CONSTR_ID } )
+-- constrIDs keys are constraint creation IDs, values are boolean (true to enable edit, false to disable edit)
+function ConstraintEditor.SetEnabledConstrs( constrIDs, constrType )
+
+	local constrEditor = getConstrEditor()
+	if not constrEditor then return end
+
+	local dataNeeded = constrEditor:SetEnabledIDs( constrIDs, constrType )
+
+	if not dataNeeded then return end
+
+	ConstraintEditor.EditConstrs( constrIDs )
+
 end
 
-function ConstraintEditor.GetDefaultConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_DEF_CONSTR_DATA, { constrID, BIT_COUNT_CONSTR_ID } )
+
+function ConstraintEditor.EditConstrs( constrIDs )
+	ConstraintEditor.SendDataToServer( NT.GET_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( constrIDs ) )
 end
+
+
+-- outdated
+function ConstraintEditor.EditConstr( constrID )
+	print(ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ))
+	ConstraintEditor.SendDataToServer( NT.GET_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
+end
+
+
+-- outdated
+function ConstraintEditor.GetDefaultConstrData( constrID )
+	ConstraintEditor.SendDataToServer( NT.GET_DEF_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
+end
+
 
 function ConstraintEditor.AddEditedEntity( ent )
 	ConstraintEditor.SendDataToServer( NT.ADD_EDITED_ENTITY, { ent } )
@@ -145,7 +204,7 @@ function ConstraintEditor.SendDataToServer( tag, ... )
 
 	if not isnumber( tag ) then return end
 	net.Start( "constraint_editor_net" )
-		net.WriteUInt( tag, BIT_COUNT_TAG )
+		net.WriteUInt( tag, BIT_COUNT.TAG )
 		for _, tab in ipairs( { ... } ) do
 			local v, arg = tab[1], tab[2]
 			local write = ConstraintEditor.NetWriteFuncs[ TypeID( v ) ]
@@ -161,42 +220,44 @@ end
 --        HUD Drawing         --
 --------------------------------
 
---[[ added soon
-local color_red = Color( 255, 0, 0 )
+
 hook.Add( "PreDrawHalos", "AddPropHalos", function()
-	halo.Add( ConstraintEditor.SpecialEnts or {}, color_red, 5, 5, 2 )
+	if LocalPlayer():GetActiveWeapon():GetClass() ~= "gmod_tool" or LocalPlayer():GetTool().Mode ~= ConstraintEditor.Mode then return end
+	for col, entities in pairs( ConstraintEditor.Halos ) do
+		halo.Add( entities, col, 3, 3, 2 )
+	end
 end )
-]]
 
 
-local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover, highlightEnts
+local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover
+
+local beamColors = {
+	{
+		start	= HSVToColor( 0, 0.9, 1 ), -- red
+		final	= HSVToColor( 210, 0.9, 1 ) -- blue
+	},
+	{
+		start	= HSVToColor( 0, 1, 1 ), -- stronger red
+		final	= HSVToColor( 210, 1, 1 ) -- stronger blue
+	}
+}
+
+local haloColors = {
+	{
+		HSVToColor( 17, 0.5, 1 ), -- red (ent1)
+		HSVToColor( 200, 0.5, 1 ) -- blue (ent2)
+	},
+	{
+		HSVToColor( 0, 0.8, 1 ), -- stronger red (ent1)
+		HSVToColor( 200, 0.8, 1 ) -- stronger blue (ent2)
+	}
+}
+
+local boxCol	= Color( 0, 0, 0, 230 )
 
 function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	constrTypeColor = constrTypeColor or {}
-	local boxCol	= Color( 0, 0, 0, 230 )
-
-	local beamColors = {
-		{
-			start	= HSVToColor( 0, 0.9, 1 ), -- red
-			final	= HSVToColor( 210, 0.9, 1 ) -- blue
-		},
-		{
-			start	= HSVToColor( 0, 1, 1 ), -- stronger red
-			final	= HSVToColor( 210, 1, 1 ) -- stronger blue
-		}
-	}
-
-	local entColors = {
-		{
-			HSVToColor( 17, 0.9, 0.95 ), -- red
-			HSVToColor( 200, 0.9, 0.95 ) -- blue
-		},
-		{
-			HSVToColor( 17, 1, 1 ), -- stronger red
-			HSVToColor( 200, 1, 1 ) -- stronger blue
-		}
-	}
 
 	local fonts = {
 		"DefaultSmall", --"DermaDefault",
@@ -209,14 +270,14 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	ConstraintEditor.HoveredConstrID = -1
 
-	local cPanel = controlpanel.Get( mode )
-	local constrEditor = cPanel and cPanel.constrBrowser and cPanel.constrBrowser.ConstraintEditor
-	local editedConstrID = constrEditor and constrEditor.constrID or -1
+	local constrBrowser		= getConstrBrowser()
+	local constrEditor		= constrBrowser and constrBrowser.constraintEditor
+	local editedConstrIDs	= constrEditor and constrEditor.constrIDs or {}
 
 	local ezData		= {}
 	local textDatas		= {}
 	local overlaps		= {}
-	local specialEnts	= {}
+	table.Empty( ConstraintEditor.Halos )
 
 	surface.SetFont( fonts[1] )
 
@@ -225,7 +286,7 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 		for constrID, constrData in pairs( constrDatas ) do
 
-			prepareDraw( ezData, textDatas, overlaps, editedConstrID, padding, constrType, constrID, constrData )
+			prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, constrType, constrID, constrData )
 
 		end
 
@@ -272,22 +333,18 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 			if weight <= 1 then continue end
 
 			for i, ent in ipairs( ents ) do
-				local col = entColors[math.min( weight - 1, 2 )][i]:Copy() -- >= 3 when edited
-				col.a = 40 + weight * 20
-				specialEnts[ent] = col
+				local col = haloColors[math.min( weight - 1, 2 )][i]:Copy() -- >= 3 when edited
+				col.a = 180 + weight * 40
+				local ceHalos = ConstraintEditor.Halos
+				if not ceHalos[col] then ceHalos[col] = {} end
+				table.insert( ceHalos[col], ent )
 			end
 		end
 
 	end
 
-	local CSEnts = highlightEnts( specialEnts )
-
 	if not showText then return end
 	cam.End3D()
-
-	for e, _ in pairs( CSEnts or {} ) do
-		e:Remove()
-	end
 
 	for i, textData in pairs( textDatas ) do
 
@@ -325,12 +382,12 @@ function extractEntAndPosData( constrType, constrData )
 end
 
 
-function prepareDraw( ezData, textDatas, overlaps, editedConstrID, padding, constrType, constrID, constrData )
+function prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, constrType, constrID, constrData )
 
 	local ent1, ent2, pos1, pos2, positions = extractEntAndPosData( constrType, constrData )
 	if not ent1 then return end
 
-	local isEdited = editedConstrID >= 0 and constrID == editedConstrID
+	local isEdited = editedConstrIDs[constrID]
 	local weight = isEdited and 3 or 1
 
 	ezData[constrID] = {
@@ -410,81 +467,5 @@ function depthSortFindHover( ezData, textDatas )
 		end
 
 	end
-
-end
-
-
-
-function highlightEnts( specialEnts )
-
-	local CSEnts = {}
-
-	for e, col in pairs( specialEnts ) do
-
-		if not e:IsValid() then continue end -- draws for world too, idk if that's good or not
-
-		--[[
-		if e.GetCollisionBounds then
-			local mins, maxs = e:GetCollisionBounds()
-			render.DrawWireframeBox( e:GetPos(), e:GetAngles(), mins, maxs, col )
-		end
-		]]
-
-		local CSEnt
-		if e:IsRagdoll() then
-			CSEnt = ClientsideRagdoll( e:GetModel(), RENDERGROUP_TRANSLUCENT )
-			if not CSEnt then continue end
-			CSEnt:SetNoDraw( false )
-		else
-			CSEnt = ClientsideModel( e:GetModel(), RENDERGROUP_TRANSLUCENT )
-			if not CSEnt then continue end
-			CSEnt:SetModelScale( CSEnt:GetModelScale() )
-			CSEnt:SetPos( e:GetPos() )
-			CSEnt:SetAngles( e:GetAngles() )
-		end
-
-		for boneId = 0, e:GetBoneCount() - 1 do
-			if CSEnt:GetBoneName( boneId ) ~= "__INVALIDBONE__" then
-				local mat = e:GetBoneMatrix( boneId )
-				if mat then
-					CSEnt:SetBoneMatrix( boneId, mat )
-				else
-					-- somehow fixes bugs
-					local pos, ang = e:GetBonePosition( boneId )
-					CSEnt:SetBonePosition( boneId, pos, ang )
-				end
-			end
-			CSEnt:ManipulateBoneScale( boneId, e:GetManipulateBoneScale( boneId ) )
-		end
-
-		--CSEnt:SetMaterial( "model_color" )
-		CSEnt:SetMaterial( e:GetMaterial() )
-		--CSEnt:SetMaterial( "models/debug/debugwhite" )
-		CSEnts[CSEnt] = col
-		specialEnts[e] = nil
-		--C_BaseEntity::UnlinkFromHierarchy(): Entity class C_ClientRagdoll[-1] has a child class C_ClientRagdoll[-1] with the wrong parent null[-1]
-	end
-
-	for e, col in pairs( CSEnts ) do
-		--render.SetColorModulation( col.r / 255, col.g / 255, col.b / 255 )
-
-		-- check https://wiki.facepunch.com/gmod/render.SetBlend
-		if not e:IsRagdoll() then
-			render.OverrideColorWriteEnable( true, false )
-			e:DrawModel()
-			render.OverrideColorWriteEnable( false, false )
-		end
-	end
-
-	for e, col in pairs( CSEnts ) do
-		render.SetColorModulation( col.r / 255, col.g / 255, col.b / 255 )
-		render.SetBlend( col.a / 255 )
-		e:DrawModel()
-		e:SetMaterial( "models/wireframe" )
-		e:DrawModel()
-		render.SetBlend( 1 )
-	end
-
-	return CSEnts
 
 end

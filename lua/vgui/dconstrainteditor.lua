@@ -1,7 +1,7 @@
 local PANEL = {}
 
 local NT = ConstraintEditor.NetTags
-local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
+local EM = ConstraintEditor.EditModes
 
 
 function PANEL:Init()
@@ -36,9 +36,9 @@ function PANEL:Init()
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
-				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID }, { constrData } )
+				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			else
-				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData.Type }, { constrData } )
+				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 			end
 		end
 
@@ -49,7 +49,7 @@ function PANEL:Init()
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
 		function ButtonDuplicate:DoClick()
-			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID } )
+			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 		end
 
 
@@ -59,7 +59,7 @@ function PANEL:Init()
 		ButtonDelete:SetText( "Remove Constraint" )
 
 		function ButtonDelete:DoClick()
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { editor.constrID, BIT_COUNT_CONSTR_ID } )
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 		end
 
 
@@ -96,14 +96,9 @@ function PANEL:Init()
 		color	= string.ToColor,
 	}
 
-	self.constrData			= {}
-	self.constrDataCache	= {}
 	self.copiedConstrData	= {}
 
-	self.rows = {}
-	self.args = {}
-	self.argsOrder = {}
-	self.reverseArgs = {}
+	self:ClearEdited()
 
 end
 
@@ -123,113 +118,251 @@ function PANEL:PerformLayout( width, height )
 
 end
 
--- codedData is nearly the same as constrData but partly uses integer keys to conserve order
-function PANEL:ShowConstr( codedData, args )
+function PANEL:ClearEdited()
+
+	self.IDs			= {}
+	self.constrCount	= 0
+	self.editMode		= EM.NONE
+
+	self:PrepareForFill()
+
+end
+
+
+function PANEL:PrepareForFill()
 
 	self.Properties:Clear()
-	self.constrData = {}
-	self.constrDataCache = {}
-	self.constrID = -1
+	self.rows = {}
 
-	if not args then return end
+	self.args				= {}
+	self.constrData			= {}
+	self.constrDataCache	= {}
 
-	local constrID		= codedData.constrID
-	local constrType	= codedData.Type
-	self.constrID		= constrID
-	self.constrData.Type	= constrType
-	self.args		= args
-	self.argsOrder	= {}
-	self.rows		= {}
+end
 
-	local editor = self
 
-	if self.ConstraintBrowser then
-		if constrID then
-			self.ConstraintBrowser:SelectConstrNode( constrID, constrType )
-		else
-			self.ConstraintBrowser:SelectTypeNode( constrType )
-		end
+-- whether we're not editing anything, editing a single constraint, or editing many constraints
+local function getEditMode( constrCount )
+	return ( constrCount < 1 and EM.NONE ) or ( constrCount == 1 and EM.SINGLE) or EM.MANY
+end
+
+
+-- only does part of the work
+function PANEL:SetEnabledIDs( IDs, dataType )
+
+	if not IDs then return false end
+
+	local editMode = self.editMode
+
+	if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return false end
+
+	local allIDs = self.IDs
+	for ID, enabled in ipairs( IDs ) do
+		allIDs[ID] = enabled or nil
 	end
 
-	for i, argName in ipairs( args ) do
+	self.constrCount = table.Count( allIDs )
 
-		self.argsOrder[argName] = i
+	self.editMode = getEditMode( self.constrCount )
 
-		local argValue			= codedData[i]
-		local argType			= type( argValue )
-		local cacheString
-		if constrID then
-			self.constrDataCache[i] = argValue
-			cacheString		= tostring( argValue )
-		end
+	local dataNeeded = editMode ~= self.editMode
 
-		if argType == "table" and IsColor( argValue ) then
-			argType = "color"
-		end
+	-- clear right now to prevent user from accidentally sending current, probably wrong,
+	-- values to the new IDs in the small windows of time where we didn't update the editor yet
+	-- the updating is done in cl_init
+	if dataNeeded then self:PrepareForFill() end
 
-		local typeRestore = self.typeRestoreFuncs[argType]
+	return dataNeeded
 
-		local row		= self.Properties:CreateRow( "Constraint Properties", argName )
-		self.rows[i]	= row
-		row:Setup( argType == "boolean" and "Bool" or "Generic", { readonly = not typeRestore } )
-
-		--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
-		local r, g, b, a = 140, 220, 100, 100
-
-		function row:DataChanged( v )
-			self:SetValue( v )
-		end
-
-		function row:SetValue( v, isOriginal, doInner )
-
-			if not isOriginal then v = typeRestore( v ) end
-			stringV = tostring( v )
-			if doInner then row.Inner:SetValue( stringV ) end
-			local changed = cacheString ~= stringV
-			self:SetBGColor( r, g, b, a )
-			self:SetPaintBackgroundEnabled( changed )
-			editor.constrData[i] = ( changed or nil ) and v
-
-		end
-
-		row:SetValue( argValue, true, true )
-
-		if argType == "Entity" then
-
-			-- TODO: change layout function for the row
-			local buttonSwitch = row:Add( "DButton" )
-				row.Button = buttonSwitch
-				buttonSwitch:SetImage( "icon16/eye.png" )
-				buttonSwitch:SetText( "Switch entity" )
-				buttonSwitch:DockMargin(0, 1, 1, 1)
-				buttonSwitch:Dock(RIGHT)
-				local s = row:GetTall()
-				buttonSwitch:SetSize( 2 * s, s )
-				buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
+end
 
 
-				function buttonSwitch:DoClick()
-					row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
-				end
 
-				local oldFunc = row.PerformLayout
-				 function row:PerformLayout()
-					oldFunc( self )
-					self.Button:SetWide( self:GetWide() * 0.1 )
-				end
-		end
+
+
+--[[
+-- this time without type handling because it's ANNOYING and badly handled everywhere else!!
+-- constrData must use integer keys
+function PANEL:AddConstr( values, args )
+
+	print("ADD CONSTR")
+	if not values then return end
+	print("\tvalues found")
+
+	local dataType		= values.Type
+	local editMode		= self.editMode
+	print("\tdataType vs selfCDType:", dataType, self.constrData.Type)
+
+	-- Don't edit constraints of a different type at once
+	if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return end
+	print("\ttype is correct")
+
+	local constrID = values.constrID
+
+	if not constrID then return end
+	print("\tconstrID found:", constrID)
+
+	-- TODO: check the line below is correct
+	local enableEdit	= values and args and not self.IDs[constrID]
+	print("\tenableEdit:", enableEdit)
+	self.IDs[constrID]	= enableEdit or nil
+
+	self.constrCount	= self.constrCount + ( enableEdit and 1 or -1 )
+	local newEditMode	= getEditMode( self.constrCount )
+	print("\tconstrCount:", self.constrCount)
+
+	-- No change needed if we're already not editing, or editing the constraint(s) the correct way
+	if editMode == newEditMode then return end
+
+	self.editMode = newEditMode
+	print("\tnewEditMode:", newEditMode)
+
+	if newEditMode == EM.NONE then
+		self:ClearEdited()
+	else
+		self:Fill( values, args )
 	end
 
+end
+]]
 
-	self.ButtonPaste:SetEnabled( self:CanPaste() )
 
+function PANEL:Fill( values, args )
+
+	print("filling menu")
+	self:PrepareForFill()
+
+	self:CreateRows( values, args )
+
+	self:SetRowsValues( values, args, true )
+
+	--[[ TODO: add this back
 	if constrType then
-
 		local row = self.Properties:CreateRow( "Extra Information", "Type" )
 		row:Setup( "String", { readonly = true } )
 		row:SetValue( constrType )
+	end
+
+	if self.constrCount > 0 then
+		local row = self.Properties:CreateRow( "Extra Information", "Constraint Count" )
+		row:Setup( "String", { readonly = true } )
+		row:SetValue( self.constrCount )
+	end
+	]]
+
+end
+
+
+function PANEL:CreateRows( values, args )
+
+	self.constrData.Type = values.Type
+	self.args = args
+
+	local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
+
+	for i, arg in ipairs( args ) do
+
+		local value	= values[i]
+		local vType	= type( value )
+		if vType == "table" and IsColor( value ) then
+			vType = "color"
+		end
+
+		--print(i,arg,value,vType)
+
+		local typeRestore = self.typeRestoreFuncs[vType]
+
+		local editor = self
+
+		local row = self.Properties:CreateRow( rowName, arg )
+
+			self.rows[i] = row
+
+			row:Setup( vType == "boolean" and "Bool" or "Generic", { readonly = not typeRestore } )
+
+			function row:DataChanged( v ) self:SetValue( v ) end
+
+			--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
+			local r, g, b, a = 140, 220, 100, 100
+
+			function row:SetValue( v, isOriginal, doInner )
+
+				if not isOriginal then v = typeRestore( v ) end
+				vString = tostring( v )
+
+				--print("row", v)
+				if doInner then row.Inner:SetValue( vString ) end
+
+				local changed = row.cacheString ~= vString
+
+				self:SetBGColor( r, g, b, a )
+				self:SetPaintBackgroundEnabled( changed )
+
+				editor.constrData[i] = ( changed or nil ) and v
+
+			end
+
+			--row:SetValue( value, true, true )
+
+			if vType == "Entity" then
+
+				local buttonSwitch = row:Add( "DButton" )
+
+					row.Button = buttonSwitch
+					buttonSwitch:SetImage( "icon16/eye.png" )
+					buttonSwitch:SetText( "Switch entity" )
+					buttonSwitch:DockMargin(0, 1, 1, 1)
+					buttonSwitch:Dock(RIGHT)
+					local s = row:GetTall()
+					buttonSwitch:SetSize( 2 * s, s )
+					buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
+
+					function buttonSwitch:DoClick()
+						row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
+					end
+
+					local oldFunc = row.PerformLayout
+					function row:PerformLayout()
+						oldFunc( self )
+						self.Button:SetWide( self:GetWide() * 0.1 )
+					end
+
+			end
 
 	end
+
+	self.ButtonPaste:SetEnabled( self:CanPaste() )
+
+end
+
+
+function PANEL:SetRowsValues( values, isCache )
+
+	print("SET ROWS VALUES")
+	for i, value in pairs( values ) do
+
+		local row = self.rows[i]
+		if not row then continue end
+
+		if isCache then row.cacheString = tostring( value ) end
+
+		row:SetValue( value, true, true )
+
+	end
+
+	self.ButtonPaste:SetEnabled( self:CanPaste() )
+
+end
+
+
+-- tries to apply new data upon existing rows
+function PANEL:SafeSetRowsValues( values )
+
+	if not ( values and self.constrData ) then return end
+
+	if values.Type ~= self.constrData.Type then return end
+
+	self:SetRowsValues( values )
 
 end
 
@@ -254,36 +387,6 @@ function PANEL:CopyFullData()
 
 	table.CopyFromTo( self.constrDataCache, self.copiedConstrData )
 	table.Merge( self.copiedConstrData, self.constrData )
-
-end
-
-
--- tries to apply new data upon existing rows
-function PANEL:TryApplyData( constrData )
-
-	if not ( constrData and self.constrData ) then return end
-
-	if constrData.Type ~= self.constrData.Type then return end
-
-	for k, v in pairs( constrData ) do
-
-		local row = self.rows[k]
-		if IsValid( row ) and row:IsEnabled() then
-
-			-- Doesn't work most of the time? Might have something to do with CacheValue.
-			-- https://github.com/Facepunch/garrysmod/blob/11b0c919d7fa57c2b32a82e27e5362ae3357ce7d/garrysmod/lua/vgui/dproperties.lua#L77
-			row:SetValue( v )
-			-- fix:
-			row.Inner:SetValue( v )
-
-			if self.constrDataCache[k] == v then v = nil end
-
-			self.constrData[k] = v
-		end
-
-	end
-
-	--self.Properties:InvalidateChildren( true )
 
 end
 

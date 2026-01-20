@@ -10,21 +10,14 @@ function PANEL:Init()
 	self.Divider:SetBottomMin( 300 )
 	self.Divider:SetDividerHeight( 5 )
 
-	--[[
-	self.Divider = self:Add( "DHorizontalDivider" )
-	self.Divider:Dock( FILL )
-	self.Divider:SetLeftWidth( 110 )
-	self.Divider:SetLeftMin( 70 )
-	self.Divider:SetRightMin( 195 )
-	self.Divider:SetDividerWidth( 3 )
-	--]]
-
 	self.Tree = self.Divider:Add( "DTree" )
+	local browser = self
 
 	function self.Tree:DoClick( node )
+		browser:ClearEdited()
 		if node.constrID then
 			-- TODO: make this able to ask for data for a whole constrType
-			ConstraintEditor.GetConstrData( node.constrID )
+			ConstraintEditor.EditConstr( node.constrID )
 		else
 			for _, constrNode in pairs( node:GetChildNodes() ) do
 				if constrNode.constrID then
@@ -35,15 +28,13 @@ function PANEL:Init()
 		end
 	end
 
-	-- self.Divider:SetLeft( self.Tree )
 	self.Divider:SetTop( self.Tree )
 
-	self.ConstraintEditor = self.Divider:Add( "DConstraintEditor" )
+	self.constraintEditor = self.Divider:Add( "DConstraintEditor" )
 
-	--self.Divider:SetRight( self.ConstraintEditor )
-	self.Divider:SetBottom( self.ConstraintEditor )
+	self.Divider:SetBottom( self.constraintEditor )
 
-	self.ConstraintEditor.ConstraintBrowser = self
+	self.constraintEditor.ConstraintBrowser = self
 
 	-- Ordered constraint types
 	self.ConstrTypes = {
@@ -138,7 +129,7 @@ function PANEL:Clear()
 
 	self:ClearTreeVisual()
 
-	self.ConstraintEditor.Properties:Clear()
+	self:ClearEdited()
 
 	for constrType, data in pairs( self.DataPerConstrType ) do
 
@@ -215,29 +206,26 @@ end
 function PANEL:SetConstrs( surfaceConstrData )
 
 	self:Clear()
-	self:ShowConstr()
+	self.constraintEditor:AddConstr()
 	self:AddConstrs( surfaceConstrData )
 
 end
 ]]
 
 
-function PANEL:ShowConstr( codedData, args )
-
-	--self:SelectConstrNode( constrID )
-	self.ConstraintEditor:ShowConstr( codedData, args )
-
+function PANEL:ClearEdited()
+	self.constraintEditor:ClearEdited()
 end
 
 
 function PANEL:RemoveConstr( constrID )
 
-	local editor = self.ConstraintEditor
+	local editor = self.constraintEditor
 	if not editor then return end
 
 	local constrData = editor:GetConstrData()
 	if constrData and editor.constrID == constrID then
-		editor:ShowConstr() -- clear
+		editor:ClearEdited() -- clear
 	end
 
 	local constrNode, constrNodes, constrType = self:FindConstrNode( constrID )

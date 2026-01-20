@@ -1,11 +1,11 @@
 util.AddNetworkString( "constraint_editor_net" )
 
-local mode = "constraint_editor" -- name of the tool
+include( "constraint_editor/sv_access.lua" )
+include( "constraint_editor/sv_constrdata.lua" )
 
-local NT = ConstraintEditor.NetTags
-local BIT_COUNT_TAG			= ConstraintEditor.NetBitCounts.TAG
-local BIT_COUNT_CONSTR_ID	= ConstraintEditor.NetBitCounts.CONSTR_ID
-local TABLES_CLEANUP_CD		= 30 -- cooldown for table cleanup
+local NT				= ConstraintEditor.NetTags
+local BIT_COUNT			= ConstraintEditor.NetBitCounts
+local TABLES_CLEANUP_CD	= 30 -- cooldown for table cleanup
 
 --------------------------------
 --      Various helpers       --
@@ -43,6 +43,8 @@ local function findConstrWeirdKeys( constrData )
 end
 
 
+-- Returns all constraints of a specific type that are linked to at least one entity from the given entities table
+-- TODO: move this function elsewhere?
 function ConstraintEditor.FindConstrsInEnts( entities, constrType )
 
 	local constrs = {}
@@ -93,7 +95,7 @@ local function restoreEntsMotion( motionRestores )
 end
 
 
--- If one of the args is nil for a constraint, this table gives you a lot of default, fallback values
+-- Arbitrary default values for constraint arguments.
 local constrArgsDefaults = {
 
 	Weld = { nocollide = false },
@@ -165,18 +167,43 @@ local constrArgsDefaults = {
 	LPos4			= vector_origin,
 }
 
+-- Get the default value for the argument, optionally considering the constraint type (Rope, Weld, ...)
+local function getConstrArgDefault( arg, constrType )
 
+	local value
+
+	if constrType then
+		local specificDefaults = constrArgsDefaults[constrType]
+		local specificValue = specificDefaults and specificDefaults[arg]
+		if specificValue ~= nil then value = specificValue end
+	end
+
+	if value == nil then value = constrArgsDefaults[arg] end
+
+	if IsColor( value ) then value = value:Copy() end
+
+	return value
+
+end
+
+
+-- Changes all values of constrData to known default ones
+-- constrData keys must be literal (str)
 local function defaultizeConstrData( constrData )
-	for arg, v in pairs( constrData ) do
-		if constrArgsDefaults[arg] ~= nil then
-			constrData[arg] = constrArgsDefaults[arg]
-		end
+	local constrType = constrData.Type
+	constrData.constrID = nil
+	for arg in pairs( constrData ) do
+		local v = getConstrArgDefault( arg, constrType )
+		if v ~= nil then constrData[arg] = v end
 	end
 end
+
+
 
 --------------------------------
 --     Player permissions     --
 --------------------------------
+
 
 
 -- Keys are constraint IDs, values are tables containing:
@@ -206,7 +233,7 @@ function ConstraintEditor.ClearAccess( ply )
 end
 
 
--- Give or revoke the player ply's permission to edit the constraint associated with constrID (or ent)
+-- Give or revoke the player's permission to edit the constraint through its creation ID or the entity itself
 function ConstraintEditor.SetAccess( ply, constrID, allow, ent )
 
 	constrID = constrID or ent and ent:GetCreationID()
@@ -231,7 +258,7 @@ function ConstraintEditor.SetAccess( ply, constrID, allow, ent )
 end
 
 
--- Transfers players permissions from constr to newConstr
+-- Transfers players permissions from constr to newConstr (as long as newConstr is still linked to their edited entities)
 function ConstraintEditor.TransferAccess( constr, newConstr, checkLink )
 
 	if not ( constr and newConstr ) then return end
@@ -248,8 +275,8 @@ function ConstraintEditor.TransferAccess( constr, newConstr, checkLink )
 		ConstraintEditor.SetAccess( ply, newConstrID, true, newConstr )
 
 		-- Update the menus
-		local surfaceConstrData = ConstraintEditor.GetSurfaceConstrData( newConstr )
 		if isConstrLinkedToEnts( newConstr, ConstraintEditor.GetEditedEntities( ply ) ) then
+			local surfaceConstrData = ConstraintEditor.GetSurfaceConstrData( newConstr )
 			ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrData, ply )
 		end
 
@@ -258,7 +285,7 @@ function ConstraintEditor.TransferAccess( constr, newConstr, checkLink )
 end
 
 
--- Returns constraint associated with constrID only if it exists and player ply has permissions to edit it
+-- Safely access a constraint through its creation ID considering the player.
 -- TODO: check if ply lost prop permission (CanTool) while editing the prop !
 function ConstraintEditor.Access( ply, constrID )
 
@@ -269,13 +296,14 @@ function ConstraintEditor.Access( ply, constrID )
 end
 
 
+-- Securely access an entity considering the player and mouse action (button)
 function ConstraintEditor.AccessEntity( ply, ent, button )
 	button = button or 1
-	return ( ply and isentity( ent ) and ent ~= NULL and ( game.SinglePlayer() or not ent:IsWorld() ) and hook.Run( "CanTool", ply, { Entity = ent }, mode, button ) and ent ) or false
+	return ( ply and isentity( ent ) and ent ~= NULL and ( game.SinglePlayer() or not ent:IsWorld() ) and hook.Run( "CanTool", ply, { Entity = ent }, ConstraintEditor.Mode, button ) and ent ) or false
 end
 
 
--- Forgets data related to this constrID (the associated constraint and the players editing permissions)
+-- Forgets all data related to this constrID (the associated constraint and the players editing permissions)
 function ConstraintEditor.ForgetConstr( constrID )
 
 	local data = ConstraintEditor.KnownConstrs[constrID]
@@ -287,6 +315,45 @@ function ConstraintEditor.ForgetConstr( constrID )
 	end
 
 	ConstraintEditor.KnownConstrs[constrID] = nil
+
+end
+
+
+function ConstraintEditor.GetEditedEntities( ply )
+	return ConstraintEditor.EditedEnts[ply]
+end
+
+
+-- Tries to give to the player edit permissions for all constraints attached to the entity
+-- Has safety checks
+function ConstraintEditor.AddEditedEntity( ent, ply )
+
+	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end
+
+	if not ConstraintEditor.EditedEnts[ply] then ConstraintEditor.EditedEnts[ply] = {} end
+
+	ConstraintEditor.EditedEnts[ply][ent] = ent
+
+	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
+	local tool = ply.GetTool and ply:GetTool( ConstraintEditor.Mode )
+
+	if tool then tool:SetStage( 1 ) end
+
+	for constrID, constr in pairs( constrs ) do
+		ConstraintEditor.SetAccess( ply, constrID, true, constr )
+	end
+	ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrsData, ply )
+
+end
+
+
+-- Clears the player edited entities, handles clientside consequences
+function ConstraintEditor.ClearEditedEntities( ply )
+
+	ConstraintEditor.ClearAccess(ply)
+	ConstraintEditor.SendDataToClient( NT.CLEAR_SHOWN_CONSTRS, nil, ply )
+	local tool = ply.GetTool and ply:GetTool( ConstraintEditor.Mode )
+	if tool then tool:SetStage( 0 ) end
 
 end
 
@@ -321,7 +388,7 @@ function ConstraintEditor.CleanupTables()
 end
 
 
--- Don't clean up tables if it was already done not long ago
+-- Same as CleanupTables but with a cooldown
 function ConstraintEditor.TryCleanupTables()
 	if CurTime() - ( ConstraintEditor.lastTablesCleanup or 0 ) < TABLES_CLEANUP_CD then return end
 
@@ -329,7 +396,7 @@ function ConstraintEditor.TryCleanupTables()
 end
 
 
--- Deletes a constraint and data associated to its constrID
+-- Deletes a constraint entity and data associated to its constrID
 function ConstraintEditor.DeleteConstr( constr )
 	constr.CEInvalid = true
 	local constrID = constr:GetCreationID()
@@ -338,48 +405,10 @@ function ConstraintEditor.DeleteConstr( constr )
 end
 
 
--- Let ply edit all constraints attached to ent
-function ConstraintEditor.AddEditedEntity( ent, ply )
+-------------------------------------
+--  Constraint Data Manipulation   --
+-------------------------------------
 
-	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end
-
-	if not ConstraintEditor.EditedEnts[ply] then ConstraintEditor.EditedEnts[ply] = {} end
-
-	ConstraintEditor.EditedEnts[ply][ent] = ent
-
-	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
-	local tool = ply.GetTool and ply:GetTool( mode )
-
-	if tool then tool:SetStage( 1 ) end
-
-	for constrID, constr in pairs( constrs ) do
-		ConstraintEditor.SetAccess( ply, constrID, true, constr )
-	end
-	ConstraintEditor.SendDataToClient( NT.ADD_SHOWN_CONSTRS, surfaceConstrsData, ply )
-
-end
-
-
-function ConstraintEditor.ClearEditedEntities( ply )
-
-	ConstraintEditor.ClearAccess(ply)
-	ConstraintEditor.SendDataToClient( NT.CLEAR_SHOWN_CONSTRS, nil, ply )
-	local tool = ply.GetTool and ply:GetTool( mode )
-	if tool then tool:SetStage( 0 ) end
-
-end
-
-
-function ConstraintEditor.GetEditedEntities( ply )
-
-	return ConstraintEditor.EditedEnts[ply]
-
-end
-
-
---------------------------------
---  Constraint Manipulation   --
---------------------------------
 
 
 -- Try to get the descriptor of the constraint type represented by the argument
@@ -394,8 +423,7 @@ function ConstraintEditor.GetConstrDescriptor( a )
 end
 
 
--- First returned table contains lists of creation IDs of ent's valid constraints.
--- The keys used to access those lists are constraint types.
+-- First returned table contains basic info (for clientside HUD) of the entity's valid constraints.
 -- Second returned table's keys are creation IDs, values are constraint entities
 function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
@@ -421,7 +449,7 @@ function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
 end
 
-
+-- Returns a table containing basic constraint information (used for HUD clientside)
 function ConstraintEditor.GetSurfaceConstrData( constr )
 
 	if not constr then return end
@@ -442,6 +470,23 @@ function ConstraintEditor.GetSurfaceConstrData( constr )
 end
 
 
+-- Returns a table containing constraint data with default values
+-- Keys are literal (str)
+function ConstraintEditor.GetConstrDataDefault( a )
+
+	local desc, constrType = ConstraintEditor.GetConstrDescriptor( a )
+	if not desc then return end
+
+	local data = {}
+	for _, arg in ipairs( desc.Args ) do
+		data[arg] = getConstrArgDefault( constrType, arg )
+	end
+
+end
+
+
+-- Returns constraint information contained in first argument in an useful format
+-- Also returns the descriptor (contains the arguments and factory function for the duplicator)
 function ConstraintEditor.GetConstrData( a, numerical, str )
 
 	local desc, constrType = ConstraintEditor.GetConstrDescriptor( a )
@@ -470,31 +515,32 @@ function ConstraintEditor.GetConstrData( a, numerical, str )
 end
 
 
-function ConstraintEditor.TransformConstrDataKeys( data, desc, numerical, str )
+-- Enables/disables numerical and/or literal (str) keys for constrData
+function ConstraintEditor.TransformConstrDataKeys( constrData, desc, numerical, str )
 
-	desc = desc or ConstraintEditor.GetConstrDescriptor( data )
+	desc = desc or ConstraintEditor.GetConstrDescriptor( constrData )
 
 	if not desc then return end
 
 	for i, arg in ipairs( desc.Args ) do
 
-		if data[arg] ~= nil then
-			if numerical then data[i] = data[arg] else data[i] = nil end
-			if not str then data[arg] = nil end
-		elseif data[i] ~= nil then
-			if str then data[arg] = data[i] else data[arg] = nil end
-			if not numerical then data[i] = nil end
+		if constrData[arg] ~= nil then
+			if numerical then constrData[i] = constrData[arg] else constrData[i] = nil end
+			if not str then constrData[arg] = nil end
+		elseif constrData[i] ~= nil then
+			if str then constrData[arg] = constrData[i] else constrData[arg] = nil end
+			if not numerical then constrData[i] = nil end
 		end
 
 	end
 
-	return data
+	return constrData
 
 end
 
 
 -- Prevent some unsafe data manipulation
--- constrData can have str or numerical keys
+-- constrData can have numerical or literal (str) keys
 function ConstraintEditor.SanitizeConstrData( constrData, ply )
 	for k, v in pairs( constrData ) do
 		local t = type( v )
@@ -538,6 +584,7 @@ function ConstraintEditor.CompleteConstrData( refConstrData, constrData, desc, p
 end
 
 
+-- Converts all found occurences of local positions to world positions
 local function LocalToWorldConstrData( constrData, overwrite )
 
 	local entKeys, posKeys = findConstrWeirdKeys( constrData )
@@ -566,6 +613,7 @@ local function LocalToWorldConstrData( constrData, overwrite )
 end
 
 
+-- Converts all found occurences of world positions to local positions (local to entities)
 local function WorldToLocalConstrData( worldConstrData, entities, overwrite )
 
 	local entKeys, posKeys = findConstrWeirdKeys( worldConstrData )
@@ -866,9 +914,12 @@ local function restoreConstrBehaviorAfterEntsChange( oldEnts, constrData, BuildD
 
 	if not ( oldEnts and constrData ) then return end
 
+
+
 	local entKeys = findConstrWeirdKeys( constrData )
 	local update = false
 
+	-- TODO: try to make the two functions be a single one??
 	local transferFunc = transferMode == 1 and restoreConstrBehaviorAfterEntChange or transferMode == 2 and imitateConstr
 	if not transferFunc then return end
 
@@ -913,7 +964,6 @@ end
 -- Apply changeConstrEnts to each constraint in constrs (from constraint.GetTable for example) considering entChange table
 function ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
-	PrintTable(entChange)
 	for _, newEnt in pairs( entChange ) do
 		if not ( isentity( newEnt ) and ( newEnt:IsValid() or newEnt:IsWorld() ) ) then return false end
 	end
@@ -951,7 +1001,7 @@ end
 
 -- Based on AdvDupe2's CreateConstraintFromTable implementation
 -- Credits: Advanced Duplicator 2 team (https://github.com/wiremod/advdupe2)
--- TODO: Check if redundant ent motion disabling can be solved (won't have much impact)
+-- TODO: Check if 'redundant ent motion disabling' can be solved (won't have much impact)
 local function createConstrAccurate( constrType, constrData, BuildDupeInfo, duplicatorFunc, ply )
 
 	local data = applyBuildDupeInfo( BuildDupeInfo, constrData )
@@ -975,7 +1025,7 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 	local constrType = constrData.Type
 
 	if not duplicatorFunc then
-		local _, desc = ConstraintEditor.GetConstrData( constrData )
+		local desc = ConstraintEditor.GetConstrDescriptor( constrData )
 		duplicatorFunc = desc.Func
 	end
 
@@ -1027,7 +1077,7 @@ function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, re
 
 	local BuildDupeInfo = copyBuildDupeInfo( constr.BuildDupeInfo )
 
-	local cvar = GetConVar( mode .. "_transfer_mode" )
+	local cvar = GetConVar( ConstraintEditor.Mode .. "_transfer_mode" )
 	local transferMode = cvar and cvar:GetInt() or 1
 	if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, transferMode ) end
 
@@ -1037,21 +1087,21 @@ function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, re
 
 end
 
-
+-- TODO: merge with CreateConstrFromConstr ?
 function ConstraintEditor.HandleNewConstrAccess( constr, newConstr, ply, delete, setEdited )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
 
 	-- Try to give permissions to edit the new constraint to all players that had access to the old one.
-	-- Comes before the "SetEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
+	-- Comes before the "AddEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
 	ConstraintEditor.TransferAccess( constr, newConstr )
 
 	if not delete then return end
 
 	-- TODO: check if players other than ply are editing the constr so that editor stays open for them
-	if setEdited and ply then ConstraintEditor.SetEditedConstr( newConstr, ply ) end
+	if setEdited and ply then ConstraintEditor.AddEditedConstrs( { newConstr }, ply ) end
 
-	-- Comes after the "SetEditedConstr" to keep the node open in ply's menu in some specific cases
+	-- Comes after the "AddEditedConstr" to keep the node open in ply's menu in some specific cases
 	ConstraintEditor.DeleteConstr( constr )
 
 end
@@ -1118,11 +1168,11 @@ function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
 
 	net.Start( "constraint_editor_net" )
-		net.WriteUInt( tag, BIT_COUNT_TAG )
+		net.WriteUInt( tag, BIT_COUNT.TAG )
 		if istable( data ) then
 			net.WriteTable( data )
 		elseif isnumber( data ) then
-			net.WriteUInt( data, BIT_COUNT_CONSTR_ID )
+			net.WriteUInt( data, BIT_COUNT.CONSTR_ID )
 		elseif isentity( data ) then
 			net.WriteEntity( data )
 		end
@@ -1130,35 +1180,39 @@ function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 
 end
 
-
-function ConstraintEditor.SetEditedConstr( constr, ply )
+-- Make constraints from constrs show up in ply's editor
+function ConstraintEditor.AddEditedConstrs( constrs, ply )
 
 	if not ply then return end
-	local tool = ply:GetTool( mode )
+	local tool = ply:GetTool( ConstraintEditor.Mode )
 
-	if not constr then
+	if not constrs or next( constrs ) == nil then
 		if tool then tool:SetStage( 1 ) end
 		return
 	end
 
-	local constrData, desc = ConstraintEditor.GetConstrData( constr, true )
+	local constrData, desc = ConstraintEditor.GetConstrData( constrs[1], true )
 	if not ( constrData and desc ) then return end
+
+	if #constrs > 1 then defaultizeConstrData( constrData ) end
 
 	if tool then tool:SetStage( 2 ) end
 
-	ConstraintEditor.SendDataToClient( NT.SET_EDITOR_DATA, { constrData, desc.Args }, ply )
+	ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
 
 end
 
+
+-- TODO: remove this (outdated)
 -- Lets the player's editor edit all constraints under the same type as constr at once
 -- A constr entity is needed, otherwise a table of known keys per constraint type would be needed.
 -- With the current approach only a table of known values per constraint type is needed, and this table already exists.
 -- TODO: check this function and related systems (defaultizeConstrData...) work
-function ConstraintEditor.SetEditedConstrType( constr, ply )
+function ConstraintEditor.AddEditedConstrType( constr, ply )
 
 	if not ply then return end
 
-	local tool = ply:GetTool( mode )
+	local tool = ply:GetTool( ConstraintEditor.Mode )
 
 	if not constr then
 		if tool then tool:SetStage( 1 ) end
@@ -1174,7 +1228,7 @@ function ConstraintEditor.SetEditedConstrType( constr, ply )
 	defaultizeConstrData( constrData )
 	ConstraintEditor.TransformConstrDataKeys( constrData, desc, true )
 
-	ConstraintEditor.SendDataToClient( NT.SET_EDITOR_DATA, { constrData, desc.Args }, ply )
+	ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
 
 end
 
@@ -1192,12 +1246,32 @@ function ConstraintEditor.Reload( ply )
 end
 
 
-local function getNetConstr( ply )
-	local constrID = net.ReadUInt( BIT_COUNT_CONSTR_ID )
-	local constr = ConstraintEditor.Access( ply, constrID )
-	if not constr then ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply ) return end
-	if not IsValid ( constr ) then ConstraintEditor.ForgetConstr( constrID ) return end
-	return constr
+local function getNetConstrs( ply )
+
+	local constrCount = net.ReadUInt( BIT_COUNT.ENT_COUNT )
+	local validConstrCount = 0
+	local constrs = {}
+	local bci = BIT_COUNT.CONSTR_ID
+
+	for i = 1, constrCount do
+
+		local constrID = net.ReadUInt( bci )
+
+		-- safety check
+		local constr = ConstraintEditor.Access( ply, constrID )
+
+		if not constr then
+			ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply )
+		elseif not IsValid ( constr ) then
+			ConstraintEditor.ForgetConstr( constrID )
+		else
+			validConstrCount = validConstrCount + 1
+			table.insert( constrs, constr )
+		end
+
+	end
+
+	return constrs, validConstrCount
 end
 
 
@@ -1212,35 +1286,45 @@ local netFunctions = {
 		ConstraintEditor.AddEditedEntity( ent, ply, true )
 	end,
 
-	[NT.GET_CONSTR_DATA] = function( ply )
-		local constr = getNetConstr( ply )
-		if constr then ConstraintEditor.SetEditedConstr( constr, ply ) end
+	[NT.GET_DATA_FOR_EDITOR] = function( ply )
+		local constrs = getNetConstrs( ply )
+		if not constrs or next( constrs ) == nil then return end
+		ConstraintEditor.AddEditedConstrs( constrs, ply )
 	end,
 
-	[NT.GET_DEF_CONSTR_DATA] = function( ply )
-		local constr = getNetConstr( ply )
-		if constr then ConstraintEditor.SetEditedConstrType( constr, ply ) end
+	--[[
+	[NT.GET_DEF_DATA_FOR_EDITOR] = function( ply )
+		local constrs = getNetConstrs( ply )
+		if not constrs or next( constrs ) == nil then return end
+		ConstraintEditor.AddEditedConstrType( constrs[1], ply )
 	end,
+	]]
 
 	[NT.REMOVE_CONSTR] = function( ply )
-		local constr = getNetConstr( ply )
-		if constr then ConstraintEditor.DeleteConstr( constr ) end
+		local constrs = getNetConstrs( ply )
+		for _, constr in ipairs( constrs ) do
+			ConstraintEditor.DeleteConstr( constr )
+		end
 	end,
 
 	[NT.UPDATE_CONSTR] = function( ply )
-		local constr = getNetConstr( ply )
 		local newConstrData = net.ReadTable()
-		if constr then ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, true, true, true, true ) end
+		local constrs = getNetConstrs( ply )
+		for _, constr in ipairs( constrs ) do
+			ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, true, true, true, true )
+		end
 	end,
 
 	[NT.DUPLIC_CONSTR] = function( ply )
-		local constr = getNetConstr( ply )
-		if constr then ConstraintEditor.CreateConstrFromConstr( constr, {}, ply ) end
+		local constrs = getNetConstrs( ply )
+		for _, constr in ipairs( constrs ) do
+			ConstraintEditor.CreateConstrFromConstr( constr, {}, ply )
+		end
 	end,
 
 	[NT.UPDATE_TYPE] = function( ply )
-		local constrType = net.ReadString()
 		local newConstrData = net.ReadTable()
+		local constrType = net.ReadString()
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
 		if not ( constrType and newConstrData and editedEnts ) then return end
 		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts, constrType )
@@ -1254,17 +1338,17 @@ local netFunctions = {
 
 
 	[NT.TRANSFER_CONSTR_ENTS] = function( ply )
-		local constr = getNetConstr( ply )
-		local newEnt = ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local constrs	= getNetConstrs( ply )
 
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply ) or {}
 		if not ( newEnt and editedEnts ) then return end
 		local entChange = {}
 		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
 
-		ConstraintEditor.SetEditedConstr( nil, ply )
+		ConstraintEditor.AddEditedConstr( nil, ply )
 		-- try transferring and stop once it's done once? (for k ,v ... do if change then return end end)
-		ConstraintEditor.ChangeConstrsEnts( entChange, { constr }, ply, true )
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
 	end,
 
 	[NT.TRANSFER_CONSTRS_ENTS] = function( ply )
@@ -1277,7 +1361,7 @@ local netFunctions = {
 
 		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts )
 
-		ConstraintEditor.SetEditedConstr( nil, ply )
+		ConstraintEditor.AddEditedConstr( nil, ply )
 		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
 	end,
 }
@@ -1289,7 +1373,7 @@ function ConstraintEditor.HandleNetRequests()
 
 		if not ( ply and ply:IsPlayer() ) then return end
 
-		local tag = net.ReadUInt( BIT_COUNT_TAG )
+		local tag = net.ReadUInt( BIT_COUNT.TAG )
 		netFunctions[tag]( ply )
 
 	end )

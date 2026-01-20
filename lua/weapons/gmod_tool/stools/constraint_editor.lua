@@ -1,5 +1,5 @@
 local mode = TOOL.Mode
-ConstraintEditor.mode = mode
+ConstraintEditor.Mode = mode
 
 --[[
 if SERVER then
