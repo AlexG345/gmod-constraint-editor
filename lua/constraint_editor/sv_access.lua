@@ -1,8 +1,8 @@
 
-----------------------------------------
--- Simplified safety checks           --
--- Replaces KnownConstr tables etc... --
-----------------------------------------
+------------------------------------------
+--  Simplified safety checks            --
+--  Replaces KnownConstr tables etc...  --
+------------------------------------------
 
 
 function ConstraintEditor.AccessEntity( ply, ent )
@@ -19,3 +19,10 @@ function ConstraintEditor.AccessConstraint( ply, constr )
 	return ( ConstraintEditor.AccessEntity( ply, first ) or ConstraintEditor.AccessEntity( ply, second ) ) and constr or false
 
 end
+
+
+---------------------
+--  aaaaaaaaaaaaa  --
+---------------------
+
+

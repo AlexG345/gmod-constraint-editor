@@ -74,7 +74,7 @@ local netFunctions = {
 				local constrEditor	= getConstrEditor()
 				constrEditor:ClearEdited()
 			end
-			ConstraintEditor.EditConstrs( hCID )
+			ConstraintEditor.EditConstr( hCID )
 			-- server will do: ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
 		end
 	end,
