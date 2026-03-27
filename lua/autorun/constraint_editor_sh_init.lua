@@ -15,7 +15,7 @@ ConstraintEditor.NetTags = {
 	GET_DATA_FOR_EDITOR		= 11,
 	GET_DEF_DATA_FOR_EDITOR	= 12,
 	CLEAR_EDITOR_DATA		= 13,
-	FILL_EDITOR			= 14,
+	FILL_EDITOR				= 14,
 	FORGET_CONSTR			= 15,
 	TRANSFER_CONSTR_ENTS	= 16,
 	TRANSFER_CONSTRS_ENTS	= 17,
@@ -38,3 +38,36 @@ ConstraintEditor.NetWriteFuncs = {
 	[TYPE_MATRIX]		= net.WriteMatrix,
 	[TYPE_COLOR]		= net.WriteColor,
 }
+
+function ConstraintEditor.GetNetWriteFunc( v )
+	return ConstraintEditor.NetWriteFuncs[TypeID( v )]
+end
+
+
+function ConstraintEditor.NetStartWrite( tag, ... )
+
+	if not isnumber( tag ) then return end
+
+	net.Start( "constraint_editor_net" )
+
+		net.WriteUInt( tag, ConstraintEditor.NetBitCounts.TAG )
+
+		for _, tab in ipairs( { ... } ) do
+			local v, arg = tab[1], tab[2]
+			local write = ConstraintEditor.GetWriteFunc( v )
+			if write then write( v, arg ) end
+		end
+
+end
+
+
+-- Put a constraint creation ID into an appropriate format for the net send functions
+--
+-- Arguments:
+--	constrID (int): A constraint creation ID
+--
+-- Returns:
+--	(table): A table containing constrID (arg) and its maximum bit count
+function ConstraintEditor.ToNetConstrID( constrID )
+	return { constrID, BIT_COUNT.CONSTR_ID }
+end

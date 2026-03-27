@@ -12,8 +12,6 @@ ConstraintEditor.EditModes = {
 	MANY	= 2
 }
 
-local EM = ConstraintEditor.EditModes
-
 --[[
 function ConstraintEditor.GetTestTable( constrID )
 	return {
@@ -28,17 +26,40 @@ end
 ]]
 
 
+-- Gets the constraint browser vgui element from the main menu
 local function getConstrBrowser()
 	local cPanel = controlpanel.Get( ConstraintEditor.Mode )
 	return cPanel and cPanel.constrBrowser
 end
 
+
+-- Gets the constraint editor vgui element from the main menu
 local function getConstrEditor()
 	local constrBrowser = getConstrBrowser()
 	return constrBrowser and constrBrowser.constraintEditor
 end
 
 
+-- Checks whether the player is looking at a constraint text bubble or not, and gets the corresponding constraint creation ID.
+--
+-- Returns:
+--	(boolean): true if a constraint is being hovered, false otherwise
+--	hCID (int | nil): the hovered constraint ID
+local function isHoveringConstr()
+	local hCID = ConstraintEditor.HoveredConstrID
+	return hCID and hCID >= 0, hCID
+end
+
+
+-- Put many constraint creation IDs into an appropriate format for the net send functions
+--
+-- Arguments:
+--	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to add the constraint creation ID to the final result)
+--
+-- Returns:
+--	(tuple): The unpacked table of constraint IDs:
+--		First table is { how many IDs will be sent, max entity (constraint) count }
+--		Consecutive tables are { creation ID of the constraint, maximum bit count for a creation ID }
 function ConstraintEditor.ToNetConstrIDs( constrIDs )
 
 	if not constrIDs then return end
@@ -46,9 +67,9 @@ function ConstraintEditor.ToNetConstrIDs( constrIDs )
 	local tab = { { 0, BIT_COUNT.ENT_COUNT } }
 	local constrCount = 0
 
-	for constrID, b in pairs( constrIDs ) do
-		if b then
-			table.insert( tab, { constrID, BIT_COUNT.CONSTR_ID } )
+	for constrID, add in pairs( constrIDs ) do
+		if add then
+			table.insert( tab, ConstraintEditor.ToNetConstrID( constrID ) )
 			constrCount = constrCount + 1
 		end
 	end
@@ -58,33 +79,43 @@ function ConstraintEditor.ToNetConstrIDs( constrIDs )
 end
 
 
+
 local netFunctions = {
 
 	[NT.LEFT_CLICK] = function()
 		local ent = net.ReadEntity()
-		local hCID = ConstraintEditor.HoveredConstrID
-		local clear = not LocalPlayer():KeyDown( IN_SPEED )
-		if not hCID or hCID < 0 then
-			if clear then
-				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
-			end
-			ConstraintEditor.AddEditedEntity( ent )
-		else
-			if clear then
+		-- If the player is pressing shift, assume that they want to edit an extra entity on top of any currently edited ones.
+		local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
+		local constrHovered, hoveredConstrID = isHoveringConstr()
+
+		if constrHovered then
+			if clearSelection then
 				local constrEditor	= getConstrEditor()
 				constrEditor:ClearEdited()
 			end
-			ConstraintEditor.EditConstr( hCID )
-			-- server will do: ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
+			ConstraintEditor.EditConstr( hoveredConstrID )
+			-- server will do: ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { { constrData, desc.Args } }, ply )
+		else
+			if clearSelection then
+				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
+			end
+			ConstraintEditor.AddEditedEntity( ent )
 		end
 	end,
 
 	[NT.RIGHT_CLICK] = function()
-		local hCID = ConstraintEditor.HoveredConstrID
-		if not hCID or hCID < 0 then
-			ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
+
+		local constrHovered, hoveredConstrID = isHoveringConstr()
+
+		if constrHovered then
+			ConstraintEditor.SendDataToServer(
+				NT.REMOVE_CONSTR,
+				ConstraintEditor.ToNetConstrID( hoveredConstrID )
+			)
 		else
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, { hCID, BIT_COUNT.CONSTR_ID } )
+			ConstraintEditor.SendDataToServer(
+				NT.CLEAR_EDITED_ENTS
+			)
 		end
 	end,
 
@@ -97,9 +128,16 @@ local netFunctions = {
 		local ent = ply:GetEyeTrace().Entity
 
 		if constrID and constrID >= 0 then
-			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTR_ENTS, { constrID, BIT_COUNT.CONSTR_ID }, { ent } )
+			ConstraintEditor.SendDataToServer(
+				NT.TRANSFER_CONSTR_ENTS,
+				ConstraintEditor.ToNetConstrID( constrID )
+				{ ent }
+			)
 		else
-			ConstraintEditor.SendDataToServer( NT.TRANSFER_CONSTRS_ENTS, { ent } )
+			ConstraintEditor.SendDataToServer(
+				NT.TRANSFER_CONSTRS_ENTS,
+				{ ent }
+			)
 		end
 
 	end,
@@ -153,7 +191,15 @@ function ConstraintEditor.HandleNetRequests()
 end
 
 
--- constrIDs keys are constraint creation IDs, values are boolean (true to enable edit, false to disable edit)
+-- Select or unselect constraints by their creation IDs, for modification through the menu.
+-- Assumes the constraint creation IDs correspond to constraints of the same type.
+--
+-- Arguments:
+--	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to enable edit, false to disable)
+--	constrType (string): The shared type of constraint (e.g. Rope, Weld, ...)
+--
+-- Returns:
+--	(nil)
 function ConstraintEditor.SetEnabledConstrs( constrIDs, constrType )
 
 	local constrEditor = getConstrEditor()
@@ -169,25 +215,37 @@ end
 
 
 function ConstraintEditor.EditConstrs( constrIDs )
-	ConstraintEditor.SendDataToServer( NT.GET_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( constrIDs ) )
+	ConstraintEditor.SendDataToServer(
+		NT.GET_DATA_FOR_EDITOR,
+		ConstraintEditor.ToNetConstrIDs( constrIDs )
+	)
 end
 
 
 -- outdated
 function ConstraintEditor.EditConstr( constrID )
 	print(ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ))
-	ConstraintEditor.SendDataToServer( NT.GET_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
+	ConstraintEditor.SendDataToServer(
+		NT.GET_DATA_FOR_EDITOR,
+		ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
+	)
 end
 
 
 -- outdated
 function ConstraintEditor.GetDefaultConstrData( constrID )
-	ConstraintEditor.SendDataToServer( NT.GET_DEF_DATA_FOR_EDITOR, ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
+	ConstraintEditor.SendDataToServer(
+		NT.GET_DEF_DATA_FOR_EDITOR,
+		ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
+	)
 end
 
 
 function ConstraintEditor.AddEditedEntity( ent )
-	ConstraintEditor.SendDataToServer( NT.ADD_EDITED_ENTITY, { ent } )
+	ConstraintEditor.SendDataToServer(
+		NT.ADD_EDITED_ENTITY,
+		{ ent }
+	)
 end
 
 
@@ -202,14 +260,7 @@ end
 
 function ConstraintEditor.SendDataToServer( tag, ... )
 
-	if not isnumber( tag ) then return end
-	net.Start( "constraint_editor_net" )
-		net.WriteUInt( tag, BIT_COUNT.TAG )
-		for _, tab in ipairs( { ... } ) do
-			local v, arg = tab[1], tab[2]
-			local write = ConstraintEditor.NetWriteFuncs[ TypeID( v ) ]
-			if write then write( v, arg ) end
-		end
+	ConstraintEditor.NetStartWrite( tag, ... )
 
 	net.SendToServer()
 
@@ -229,7 +280,9 @@ hook.Add( "PreDrawHalos", "AddPropHalos", function()
 end )
 
 
+-- Local functions
 local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover
+
 
 local beamColors = {
 	{

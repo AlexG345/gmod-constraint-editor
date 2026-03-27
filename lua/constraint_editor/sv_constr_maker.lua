@@ -5,32 +5,20 @@ include( "constraint_editor/sv_constr_cleanup.lua" )
 include( "constraint_editor/sv_access.lua" )
 
 
+-- This addon, at its core, uses the same functions as the duplicator to create constraints.
+-- The duplicator uses functions from the global constraint table to create constraints, at least in most cases (constraints from addons might be different)
+-- Thus there are two methods of "easily" creating constraints, the second one is untested and unused in this addon:
+--	duplicator.ConstraintType[constrType](unpack(constrData))
+--	constraint[constrType](unpack(constrData))
+-- Note: constrData is a constraint data that uses numerical keys. Check constraint_editor/sv_constr_data.lua file for more information on constraint data.
+
+-- A complete list of constraint factory functions and their arguments can be found here: https://wiki.facepunch.com/gmod/constraint
+-- 	e.g. constraint.Weld (https://wiki.facepunch.com/gmod/constraint.Weld)
 
 
 ----------------------
 --  Simple helpers  --
 ----------------------
-
-
-local function findConstrWeirdKeys( constrData )
-	local ent1, ent2, ent4 = constrData.Ent1, constrData.Ent2, constrData.Ent4
-	local LPos1, LPos2, LPos4, LPos, LocalAxis = constrData.LPos1, constrData.LPos2, constrData.LPos4, constrData.LPos, constrData.LocalAxis
-	local entKeys = {
-		ent1 and "Ent1" or nil,
-		ent2 and "Ent2" or ent4 and "Ent4" or nil
-	}
-	local posKeys = {
-		[1] = {
-			LPos1 and "LPos1" or nil, --or LPos and "LPos" or nil,
-			LocalAxis and "LocalAxis" or nil
-		},
-		[2] = {
-			LPos2 and "LPos2" or LPos4 and "LPos4" or LPos and "LPos" or nil
-		}
-	}
-
-	return entKeys, posKeys
-end
 
 
 local function setEntMotion( ent, b )
@@ -68,10 +56,19 @@ end
 --  Constraint Data Position Transforms  --
 -------------------------------------------
 
+
 -- Converts all found occurences of local positions to world positions
+--
+-- Arguments:
+--	constrData (table): Constraint data that must use string keys
+--	overwrite (boolean): If true, constrData (arg) is directly modified, otherwise a new table is created.
+--
+-- Returns:
+--	worldConstrData (table): World-relative converted constraint data
+--	entities (table): Sequential table containing first entity and second entity from constrData (arg) before any modifications
 local function LocalToWorldConstrData( constrData, overwrite )
 
-	local entKeys, posKeys = ConstraintEditor.FindConstrWeirdKeys( constrData )
+	local entKeys, posKeys = ConstraintEditor.GetConstrEntPosKeys( constrData )
 	local worldConstrData = overwrite and constrData or table.Copy( constrData )
 	local entities = {}
 	local world = game.GetWorld()
@@ -97,10 +94,18 @@ local function LocalToWorldConstrData( constrData, overwrite )
 end
 
 
--- Converts all found occurences of world positions to local positions (local to entities)
+-- Converts all found occurences of world positions to local positions
+--
+-- Arguments:
+--	worldConstrData (table): Constraint data that must use string keys, and whose entities should be the world
+--	entities (table): Sequential table containing first entity and second entity for the positions to be relative to
+--	overwrite (boolean): If true, worldConstrData (arg) is directly modified, otherwise a new table is created.
+--
+-- Returns:
+--	constrData (table): entities (arg) -relative converted constraint data
 local function WorldToLocalConstrData( worldConstrData, entities, overwrite )
 
-	local entKeys, posKeys = ConstraintEditor.FindConstrWeirdKeys( worldConstrData )
+	local entKeys, posKeys = ConstraintEditor.GetConstrEntPosKeys( worldConstrData )
 	local constrData = overwrite and worldConstrData or table.Copy( worldConstrData )
 
 	for i, entKey in pairs( entKeys ) do
@@ -186,7 +191,7 @@ local function applyBuildDupeInfo( BuildDupeInfo, constrData, entKeys, staticEnt
 
 	if not BuildDupeInfo then return end
 
-	entKeys = entKeys or ConstraintEditor.FindConstrWeirdKeys( constrData )
+	entKeys = entKeys or ConstraintEditor.GetConstrEntPosKeys( constrData )
 
 	local firstEnt, secondEnt = constrData[entKeys[1]], constrData[entKeys[2]] or game.GetWorld()
 	--TODO: verify this line is useful
@@ -425,7 +430,7 @@ local function restoreConstrBehaviorAfterEntsChange( replacedEnts, constrData, B
 
 	if not ( replacedEnts and constrData ) then return end
 
-	local entKeys = findConstrWeirdKeys( constrData )
+	local entKeys = ConstraintEditor.GetConstrEntPosKeys( constrData )
 	local update = false
 
 	-- TODO: try to make the two functions be a single one??
@@ -447,7 +452,7 @@ end
 local function changeConstrEnts( entChange, constr, ply, delete )
 
 	local constrData = ConstraintEditor.GetConstrData( constr )
-	local entKeys = findConstrWeirdKeys( constrData )
+	local entKeys = ConstraintEditor.GetConstrEntPosKeys( constrData )
 	local update = false
 
 	for i, entKey in pairs( entKeys ) do
@@ -499,26 +504,51 @@ end
 --  Actual Constraint Creation  --
 ----------------------------------
 
+
+-- Create a constraint like the duplicator does
 --
+-- Arguments:
+--	factory (function): The function to be called to create the constraint
+--	constrData (table): Constraint data that uses only numerical keys, to be used as arguments for factory (arg)
+--	ply (Player): The player who caused this function call
+--	constrType (string): The (very optional) constraint type
+--
+-- Returns:
+--	constr (Entity): The created constraint.
+--	rope (Entity (keyframe_rope) | nil): The visual part of the constraint, a keyframe_rope
+--
+-- TODO: check if it's necessary to return more (e.g. for hydraulic constraint there can be 4 return values: phys_spring, keyframe_rope, gmod_winch_controller, phys_slideconstraint)
 local function createConstrBlindly( factory, constrData, ply, constrType )
 	local ok, constr, rope = pcall( factory, unpack( constrData, 1, #constrData ) )
-	print( ok, constr, rope, "error:", ply and not (ok and constr), "type:", constrType)
+	-- print( ok, constr, rope, "error:", ply and not (ok and constr), "type:", constrType)
 	if ply and not ( ok and constr ) then
-		PrintTable( constrData )
+		-- PrintTable( constrData )
 		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constrType or "unknown type" .. " constraint properly!" )
 	end
 	return constr, rope
 end
 
 
--- Based on AdvDupe2's CreateConstraintFromTable implementation
+-- Based on Advanced Duplicator 2 CreateConstraintFromTable function
 -- Credits: Advanced Duplicator 2 team (https://github.com/wiremod/advdupe2)
+--
+-- Arguments:
+--	constrType (string): The (very optional) constraint type
+--	constrData (table): Constraint data that must use string keys
+--	BuildDupeInfo (table | nil): Table (created by advanced duplicator 2) to restore relative positions and angles
+--	duplicatorFunc (function): The function to be called to create the constraint
+--	ply (Player): The player who caused this function call
+--
+-- Returns:
+--	constr (Entity): The created constraint.
+--	rope (Entity (keyframe_rope) | nil): The visual part of the constraint, a keyframe_rope
+--
 -- TODO: Check if 'redundant ent motion disabling' can be solved (won't have much impact)
 local function createConstrAccurate( constrType, constrData, BuildDupeInfo, duplicatorFunc, ply )
 
 	local data = applyBuildDupeInfo( BuildDupeInfo, constrData )
 
-	ConstraintEditor.TransformConstrDataKeys( constrData, nil, true )
+	ConstraintEditor.TransformConstrDataKeys( constrData, nil, true ) -- use numerical
 	local constr, rope = createConstrBlindly( duplicatorFunc, constrData, ply, constrType )
 
 	if constr and BuildDupeInfo then constr.BuildDupeInfo = table.Copy( BuildDupeInfo ) end
@@ -529,10 +559,21 @@ local function createConstrAccurate( constrType, constrData, BuildDupeInfo, dupl
 end
 
 
-
 -- Tries to create a new constraint, assuming no entity change must be handled.
 -- Handles cleanup, undo, sandbox limits, wire hydraulics stuff, BuildDupeInfo, ...
 -- Does not check at all if constrData is "safe".
+--
+-- Arguments:
+--	constrData (table): Constraint data that must use string keys
+--	BuildDupeInfo (table | nil): Table (created by advanced duplicator 2) to restore relative positions and angles
+--	duplicatorFunc (function): The function to be called to create the constraint
+--	ply (Player): The player who supposedly owns the created constraint
+--	enforceLimits (boolean): Only if true, sandbox limits are checked, which can result in the deletion of the constraint and rope.
+--	addUndo (boolean): Only if true, an entry is added to the undo menu for ply (arg).
+--
+-- Returns:
+--	constr (Entity | nil): The created constraint.
+--	rope (Entity (keyframe_rope) | nil): The visual part of the constraint, a keyframe_rope
 function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFunc, ply, enforceLimits, addUndo )
 
 	local constrType = constrData.Type
@@ -555,6 +596,7 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 
 	local newConstr, rope = createConstrAccurate( constrType, constrData, BuildDupeInfo, duplicatorFunc, ply )
 
+	-- TODO: check how this interacts with wire controller stuff
 	local limitSafe = ConstraintEditor.DoLimitsUndoCleanup( ply, newConstr, rope, enforceLimits, addUndo )
 	if not limitSafe then return end
 
@@ -584,8 +626,20 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 end
 
 
--- Links together constraint data handling, constraint creation, player permissions, ...
--- Creates a new constraint assuming newConstrData is constr's constr data thas has been modified.
+-- Creates a new constraint by using an existing constraint and some "new" constraint data
+-- Also does safety checks for the given constraint data, can delete the old constraint, can update players permissions and menu...
+
+-- Arguments:
+--	constr (table | Entity): The existing constraint the new one will be based on
+--	newConstrData (table): Constraint data for the new constraint
+--	ply (Player): The player who's trying to create the new constraint
+--	restoreBehavior (boolean): Only if true, tries to restore the constraint behavior from any linked entity/entities change(s).
+--	sanitize (boolean): Only if true, checks if entities inside newConstrData (arg) can be accessed by ply (arg)
+--	delete (boolean): Only if true, deletes the old constraint in case of successful creation of the new constraint
+--	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), in case of successful creation
+--
+-- Returns:
+--	(nil)
 function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, restoreBehavior, sanitize, delete, setEdited )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr )
@@ -598,9 +652,12 @@ function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, re
 
 	local BuildDupeInfo = copyBuildDupeInfo( constr.BuildDupeInfo )
 
-	-- In case some entities have been changed to others.
-	local cvar = GetConVar( ConstraintEditor.Mode .. "_transfer_mode" )
-	local transferMode = cvar and cvar:GetInt() or 1
+	-- In case some entities have been changed to others. If so, try to preserve the constraint's behavior.
+	local transferMode = 1
+	if ply then
+		local tool = ConstraintEditor.GetTool( ply )
+		transferMode = tool and tool:GetClientNumber( "transfer_mode", 1 ) or 1
+	end
 	if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, transferMode ) end
 
 	local newConstr = ConstraintEditor.CreateConstr( newConstrData, BuildDupeInfo, desc.Func, ply, not delete, not delete )
@@ -610,7 +667,17 @@ function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, re
 end
 
 
--- Replace (in the access system etc) an existing constraint with another one.
+-- Replace (in the access system etc) an existing constraint with another existing one.
+--
+-- Arguments
+--	constr (table | Entity): The existing constraint to be replaced
+--	newConstr (table | Entity): The existing constraint that will replace the other
+--	ply (Player | nil): The player who supposedly owns newConstr (arg)
+--	delete (boolean): Only if true, deletes the old constraint, and only if newConstr (arg) is valid.
+--	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), and only if newConstr (arg) is valid.
+--
+-- Returns:
+--	(nil)
 function ConstraintEditor.ReplaceConstr( constr, newConstr, ply, delete, setEdited )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end

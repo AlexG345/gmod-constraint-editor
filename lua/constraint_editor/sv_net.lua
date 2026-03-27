@@ -7,7 +7,7 @@ include( "constraint_editor/sv_misc.lua" )
 local NT				= ConstraintEditor.NetTags
 local BIT_COUNT			= ConstraintEditor.NetBitCounts
 
-
+--[[
 function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 
 	if not isnumber( tag ) then return end
@@ -25,27 +25,48 @@ function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 	net.Send( ply )
 
 end
+]]
+
+
+function ConstraintEditor.SendDataToClient( tag, ply, ... )
+
+	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
+
+	ConstraintEditor.NetStartWrite( tag, ... )
+
+	net.Send( ply )
+
+end
 
 
 -- Make constraints from constrs show up in ply's editor
 function ConstraintEditor.AddEditedConstrs( constrs, ply )
 
 	if not ply then return end
-	local tool = ply:GetTool( ConstraintEditor.Mode )
+	local tool = ConstraintEditor.GetTool( ply )
 
 	if not constrs or next( constrs ) == nil then
 		if tool then tool:SetStage( 1 ) end
 		return
 	end
 
-	local constrData, desc = ConstraintEditor.GetConstrData( constrs[1], true )
-	if not ( constrData and desc ) then return end
+	local constr = select(2, next(constrs)) -- Choose first constraint in constrs (arg)
+	local constrData, desc
 
-	if #constrs > 1 then ConstraintEditor.DefaultizeConstrData( constrData ) end
+	if #constrs > 1 then
+		constrData, desc = ConstraintEditor.GetConstrDataDefault( constr, true )
+	else
+		constrData, desc = ConstraintEditor.GetConstrData( constr, true )
+	end
+
+	if not ( constrData and desc ) then return end
 
 	if tool then tool:SetStage( 2 ) end
 
-	ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
+	ConstraintEditor.SendDataToClient(
+		NT.FILL_EDITOR, ply,
+		{ { constrData, desc.Args } }
+	)
 
 end
 
@@ -59,7 +80,7 @@ function ConstraintEditor.AddEditedConstrType( constr, ply )
 
 	if not ply then return end
 
-	local tool = ply:GetTool( ConstraintEditor.Mode )
+	local tool = ply.GetTool( ConstraintEditor.Mode )
 
 	if not constr then
 		if tool then tool:SetStage( 1 ) end
@@ -75,23 +96,33 @@ function ConstraintEditor.AddEditedConstrType( constr, ply )
 	ConstraintEditor.DefaultizeConstrData( constrData )
 	ConstraintEditor.TransformConstrDataKeys( constrData, desc, true )
 
-	ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { constrData, desc.Args }, ply )
+	ConstraintEditor.SendDataToClient(
+		NT.FILL_EDITOR, ply,
+		{ { constrData, desc.Args } }
+	)
 
 end
 
 
 function ConstraintEditor.LeftClick( ent, ply )
-	ConstraintEditor.SendDataToClient( NT.LEFT_CLICK, ent, ply )
+	ConstraintEditor.SendDataToClient(
+		NT.LEFT_CLICK, ply,
+		{ ent }
+	)
 end
 
 
 function ConstraintEditor.RightClick( ply )
-	ConstraintEditor.SendDataToClient( NT.RIGHT_CLICK, nil, ply )
+	ConstraintEditor.SendDataToClient(
+		NT.RIGHT_CLICK, ply
+	)
 end
 
 
 function ConstraintEditor.Reload( ply )
-	ConstraintEditor.SendDataToClient( NT.RELOAD, nil, ply )
+	ConstraintEditor.SendDataToClient(
+		NT.RELOAD, ply
+	)
 end
 
 
@@ -110,7 +141,10 @@ local function getNetConstrs( ply )
 		local constr = ConstraintEditor.AccessConstraint( ply, constrID )
 
 		if not constr then
-			ConstraintEditor.SendDataToClient( NT.FORGET_CONSTR, constrID, ply )
+			ConstraintEditor.SendDataToClient(
+				NT.FORGET_CONSTR, ply,
+				ConstraintEditor.ToNetConstrID( constrID )
+			)
 		elseif not IsValid ( constr ) then
 			ConstraintEditor.ForgetConstr( constrID )
 		else
@@ -176,7 +210,7 @@ local netFunctions = {
 		local constrType = net.ReadString()
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
 		if not ( constrType and newConstrData and editedEnts ) then return end
-		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts, constrType )
+		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts, constrType )
 		for _, constr in pairs( constrs ) do
 			constr = constr.Constraint
 			constr = ConstraintEditor.AccessConstraint( ply, constr:GetCreationID() )
@@ -208,7 +242,7 @@ local netFunctions = {
 		local entChange = {}
 		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
 
-		local constrs = ConstraintEditor.FindConstrsInEnts( editedEnts )
+		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts )
 
 		ConstraintEditor.AddEditedConstr( nil, ply )
 		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )

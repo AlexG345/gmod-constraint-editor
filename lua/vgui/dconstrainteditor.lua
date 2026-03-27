@@ -121,7 +121,7 @@ end
 function PANEL:ClearEdited()
 
 	self.IDs			= {}
-	self.constrCount	= 0
+	self.editCount	= 0
 	self.editMode		= EM.NONE
 
 	self:PrepareForFill()
@@ -156,20 +156,20 @@ function PANEL:SetEnabledIDs( IDs, dataType )
 
 	if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return false end
 
-	local allIDs = self.IDs
+	local editedIDs = self.IDs
 	for ID, enabled in ipairs( IDs ) do
-		allIDs[ID] = enabled or nil
+		editedIDs[ID] = enabled or nil
 	end
 
-	self.constrCount = table.Count( allIDs )
+	self.editCount = table.Count( editedIDs )
 
-	self.editMode = getEditMode( self.constrCount )
+	self.editMode = getEditMode( self.editCount )
 
 	local dataNeeded = editMode ~= self.editMode
 
 	-- clear right now to prevent user from accidentally sending current, probably wrong,
 	-- values to the new IDs in the small windows of time where we didn't update the editor yet
-	-- the updating is done in cl_init
+	-- (that updating is done in cl_init)
 	if dataNeeded then self:PrepareForFill() end
 
 	return dataNeeded
@@ -207,9 +207,9 @@ function PANEL:AddConstr( values, args )
 	print("\tenableEdit:", enableEdit)
 	self.IDs[constrID]	= enableEdit or nil
 
-	self.constrCount	= self.constrCount + ( enableEdit and 1 or -1 )
-	local newEditMode	= getEditMode( self.constrCount )
-	print("\tconstrCount:", self.constrCount)
+	self.editCount	= self.editCount + ( enableEdit and 1 or -1 )
+	local newEditMode	= getEditMode( self.editCount )
+	print("\tconstrCount:", self.editCount)
 
 	-- No change needed if we're already not editing, or editing the constraint(s) the correct way
 	if editMode == newEditMode then return end
@@ -243,10 +243,10 @@ function PANEL:Fill( values, args )
 		row:SetValue( constrType )
 	end
 
-	if self.constrCount > 0 then
+	if self.editCount > 0 then
 		local row = self.Properties:CreateRow( "Extra Information", "Constraint Count" )
 		row:Setup( "String", { readonly = true } )
-		row:SetValue( self.constrCount )
+		row:SetValue( self.editCount )
 	end
 	]]
 

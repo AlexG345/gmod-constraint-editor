@@ -1,10 +1,36 @@
----------------------------------------
---  Surface Constraint Data Getters  --
----------------------------------------
+
+-- Surface constraints data is a table used for the menus and HUD clientside
+-- It is structured like that (constrType -> constrID = creation ID -> information):
+--
+--	surfaceConstrsData = {
+--		constrType_1 = {
+--
+--			constrID_1 = {
+--				firstEntity, secondEntity, firstLocalPos, secondLocalPos, worldPos_1, worldPos_2, localAxis
+--			},
+--
+--			etc...
+--
+--		},
+--
+--		etc...
+--
+--	}
 
 
--- First returned table contains basic info (for clientside HUD) of the entity's valid constraints.
--- Second returned table's keys are creation IDs, values are constraint entities
+------------------------------------------
+--  Surface Constraint(s) Data Getters  --
+------------------------------------------
+
+
+-- Gets the surface constraints data associated with all the constraints linked to the given entity
+--
+-- Arguments:
+--	ent (Entity): The entity whose linked constraints we want information about
+--
+-- Returns:
+--	surfaceConstrsData (table): Surface constraints data associated with all the constraints linked to ent (arg)
+--	constrs (table): Table of all found constraints, each constraint can be accessed by its creation ID.
 function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
 	if not ( isentity( ent ) and ( ent:IsValid() or ent:IsWorld() ) ) then return false end
@@ -30,7 +56,15 @@ function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 end
 
 
--- Returns a table containing basic constraint information (used for HUD clientside)
+-- Gets the surface constraint data associated with the given constraint
+--
+-- Arguments:
+--	constr (table | Entity): The constraint we want information about
+--
+-- Returns:
+--	(table): Surface constraint data associated with constr (arg)
+--	constrType (string): The constraint type of constr (arg)
+--	constrID (int): The creation ID of constr (arg)
 function ConstraintEditor.GetSurfaceConstrData( constr )
 
 	if not constr then return end
