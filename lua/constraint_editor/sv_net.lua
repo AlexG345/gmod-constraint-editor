@@ -249,7 +249,8 @@ local netFunctions = {
 	end,
 }
 
--- Client safety checks are here
+
+-- Start listening to net messages
 function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, ply )

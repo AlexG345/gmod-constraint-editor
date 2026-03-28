@@ -10,23 +10,32 @@ function PANEL:Init()
 	self.Divider:SetBottomMin( 300 )
 	self.Divider:SetDividerHeight( 5 )
 
-	self.Tree = self.Divider:Add( "DTree" )
-	local browser = self
 
-	function self.Tree:DoClick( node )
-		browser:ClearEdited()
-		if node.constrID then
-			-- TODO: make this able to ask for data for a whole constrType
-			ConstraintEditor.EditConstr( node.constrID )
-		else
-			for _, constrNode in pairs( node:GetChildNodes() ) do
-				if constrNode.constrID then
-					ConstraintEditor.GetDefaultConstrData( constrNode.constrID )
-					return
+	self.Tree = self.Divider:Add( "DTree" )
+
+		function self.Tree:DoClick( node )
+
+			local constrIDs = {}
+			local constrType
+			local clearSelection = true -- TODO: add SHIFT behavior to select multiple constrs
+
+			if node.constrID then
+				constrType = node:GetParentNode().constrType
+				constrIDs = { [node.constrID] = true } -- TODO: allow unselect
+			else
+				constrType = node.constrType
+
+				for _, childNode in pairs( node:GetChildNodes() ) do
+					if childNode.constrID then
+						constrIDs[childNode.constrID] = true
+					end
 				end
 			end
+
+			ConstraintEditor.ChangeEnabledConstrs( constrIDs, constrType, clearSelection )
+
 		end
-	end
+
 
 	self.Divider:SetTop( self.Tree )
 
@@ -95,7 +104,10 @@ function PANEL:AddConstrType( constrType )
 
 	local data = self:GetDataPerConstrType( constrType, true )
 
-	if not IsValid( data.panel ) then data.panel = self.Tree:AddNode( constrType, data.icon or self.defaultIcon ) end
+	if not IsValid( data.panel ) then
+		data.panel = self.Tree:AddNode( constrType, data.icon or self.defaultIcon )
+		data.panel.constrType = constrType
+	end
 
 	return data
 
@@ -129,7 +141,7 @@ function PANEL:Clear()
 
 	self:ClearTreeVisual()
 
-	self:ClearEdited()
+	self:ClearSelection()
 
 	for constrType, data in pairs( self.DataPerConstrType ) do
 
@@ -213,8 +225,8 @@ end
 ]]
 
 
-function PANEL:ClearEdited()
-	self.constraintEditor:ClearEdited()
+function PANEL:ClearSelection()
+	self.constraintEditor:ClearSelection()
 end
 
 
@@ -225,7 +237,7 @@ function PANEL:RemoveConstr( constrID )
 
 	local constrData = editor:GetConstrData()
 	if constrData and editor.constrID == constrID then
-		editor:ClearEdited() -- clear
+		editor:ClearSelection() -- clear
 	end
 
 	local constrNode, constrNodes, constrType = self:FindConstrNode( constrID )
@@ -259,7 +271,7 @@ function PANEL:FindTypeNode( constrType )
 
 	for _, constrTypeNode in pairs( self.Tree:Root():GetChildNodes() ) do
 
-		if constrTypeNode:GetText() == constrType then return constrTypeNode end
+		if constrTypeNode.constrType == constrType then return constrTypeNode end
 
 	end
 

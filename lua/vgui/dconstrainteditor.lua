@@ -98,7 +98,7 @@ function PANEL:Init()
 
 	self.copiedConstrData	= {}
 
-	self:ClearEdited()
+	self:ClearSelection()
 
 end
 
@@ -118,10 +118,10 @@ function PANEL:PerformLayout( width, height )
 
 end
 
-function PANEL:ClearEdited()
+function PANEL:ClearSelection()
 
 	self.IDs			= {}
-	self.editCount	= 0
+	self.editCount		= 0
 	self.editMode		= EM.NONE
 
 	self:PrepareForFill()
@@ -141,38 +141,54 @@ function PANEL:PrepareForFill()
 end
 
 
--- whether we're not editing anything, editing a single constraint, or editing many constraints
-local function getEditMode( constrCount )
-	return ( constrCount < 1 and EM.NONE ) or ( constrCount == 1 and EM.SINGLE) or EM.MANY
+-- whether we're not editing anything, editing a single thing, or editing many things
+local function getEditMode( IDCount )
+	return ( IDCount < 1 and EM.NONE ) or ( IDCount == 1 and EM.SINGLE) or EM.MANY
 end
 
 
--- only does part of the work
-function PANEL:SetEnabledIDs( IDs, dataType )
-
-	if not IDs then return false end
+-- Prepares the editor for a change in the selected IDs
+-- Arguments:
+--	newIDs (table): A table whose keys are IDs, and whose values should be boolean (true to select, false to unselect)
+--	dataType (string): The "type of data" (e.g. Rope, Weld, ...)
+--	clearSelection (boolean | nil): true only if you want to unselect all IDs beforehand
+--
+-- Returns:
+--	(boolean | nil): true only if the editor needs fresh data from elsewhere
+--	IDs (table | nil): The final selected IDs
+--	(int | nil): The final edit mode
+function PANEL:ChangeIDsAndPrepare( newIDs, dataType, clearSelection )
 
 	local editMode = self.editMode
 
-	if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return false end
-
-	local editedIDs = self.IDs
-	for ID, enabled in ipairs( IDs ) do
-		editedIDs[ID] = enabled or nil
+	if clearSelection then
+		-- In that case no need to check dataType (arg)
+		self:ClearSelection()
+	else
+		-- TODO: might want to move this check after since it's possible that we're going to disable all current IDs, then enable new ones for a new data type.
+		-- though this would complicates things a lot
+		if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return end
 	end
 
-	self.editCount = table.Count( editedIDs )
+	if not newIDs then return end
+
+	-- Enable/disable the given IDs
+	local IDs = self.IDs
+	for newID, enabled in pairs( newIDs ) do
+		IDs[newID] = enabled or nil
+	end
+
+	self.editCount = table.Count( IDs )
 
 	self.editMode = getEditMode( self.editCount )
 
-	local dataNeeded = editMode ~= self.editMode
+	local editModeChanged = editMode ~= self.editMode
 
-	-- clear right now to prevent user from accidentally sending current, probably wrong,
-	-- values to the new IDs in the small windows of time where we didn't update the editor yet
-	-- (that updating is done in cl_init)
-	if dataNeeded then self:PrepareForFill() end
+	-- Clear the editor now to prevent the user from (accidentally)
+	-- sending current values meant for the old IDs to the new IDs
+	if editModeChanged then self:PrepareForFill() end
 
-	return dataNeeded
+	return editModeChanged and self.editMode ~= EM.NONE, IDs, self.editMode
 
 end
 
@@ -218,7 +234,7 @@ function PANEL:AddConstr( values, args )
 	print("\tnewEditMode:", newEditMode)
 
 	if newEditMode == EM.NONE then
-		self:ClearEdited()
+		self:ClearSelection()
 	else
 		self:Fill( values, args )
 	end

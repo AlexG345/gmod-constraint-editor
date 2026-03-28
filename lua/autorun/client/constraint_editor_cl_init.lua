@@ -3,7 +3,7 @@ local BIT_COUNT = ConstraintEditor.NetBitCounts
 
 
 ConstraintEditor.Constrs = {}
-ConstraintEditor.HoveredConstrID = -1 -- for the stool
+ConstraintEditor.HoveredConstrInfo = { ID = -1, Type = "" } -- for the stool
 ConstraintEditor.Halos = {}
 
 ConstraintEditor.EditModes = {
@@ -45,16 +45,17 @@ end
 -- Returns:
 --	(boolean): true if a constraint is being hovered, false otherwise
 --	hCID (int | nil): the hovered constraint ID
+--	(string | nil): the hovered constraint type
 local function isHoveringConstr()
-	local hCID = ConstraintEditor.HoveredConstrID
-	return hCID and hCID >= 0, hCID
+	local hCID = ConstraintEditor.HoveredConstrInfo.ID
+	return hCID and hCID >= 0, hCID, ConstraintEditor.HoveredConstrInfo.Type
 end
 
 
--- Put many constraint creation IDs into an appropriate format for the net send functions
+-- Puts many constraint creation IDs into an appropriate format for the net send functions
 --
 -- Arguments:
---	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to add the constraint creation ID to the final result)
+--	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to include the constraint creation ID to the final result)
 --
 -- Returns:
 --	(tuple): The unpacked table of constraint IDs:
@@ -86,15 +87,10 @@ local netFunctions = {
 		local ent = net.ReadEntity()
 		-- If the player is pressing shift, assume that they want to edit an extra entity on top of any currently edited ones.
 		local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
-		local constrHovered, hoveredConstrID = isHoveringConstr()
+		local constrHovered, constrID, constrType = isHoveringConstr()
 
 		if constrHovered then
-			if clearSelection then
-				local constrEditor	= getConstrEditor()
-				constrEditor:ClearEdited()
-			end
-			ConstraintEditor.EditConstr( hoveredConstrID )
-			-- server will do: ConstraintEditor.SendDataToClient( NT.FILL_EDITOR, { { constrData, desc.Args } }, ply )
+			ConstraintEditor.ChangeEnabledConstrs( { [constrID] = true }, constrType, clearSelection )
 		else
 			if clearSelection then
 				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
@@ -105,12 +101,12 @@ local netFunctions = {
 
 	[NT.RIGHT_CLICK] = function()
 
-		local constrHovered, hoveredConstrID = isHoveringConstr()
+		local constrHovered, constrID = isHoveringConstr()
 
 		if constrHovered then
 			ConstraintEditor.SendDataToServer(
 				NT.REMOVE_CONSTR,
-				ConstraintEditor.ToNetConstrID( hoveredConstrID )
+				ConstraintEditor.ToNetConstrID( constrID )
 			)
 		else
 			ConstraintEditor.SendDataToServer(
@@ -179,6 +175,7 @@ local netFunctions = {
 }
 
 
+-- Start listening to net messages
 function ConstraintEditor.HandleNetRequests()
 
 	net.Receive( "constraint_editor_net", function( len, _ )
@@ -197,47 +194,38 @@ end
 -- Arguments:
 --	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to enable edit, false to disable)
 --	constrType (string): The shared type of constraint (e.g. Rope, Weld, ...)
+--	clearIDs (boolean | nil): true only if you want to unselect all constraints beforehand
 --
 -- Returns:
 --	(nil)
-function ConstraintEditor.SetEnabledConstrs( constrIDs, constrType )
+function ConstraintEditor.ChangeEnabledConstrs( constrIDs, constrType, clearIDs )
 
 	local constrEditor = getConstrEditor()
 	if not constrEditor then return end
 
-	local dataNeeded = constrEditor:SetEnabledIDs( constrIDs, constrType )
+	local dataNeeded, IDs, editMode = constrEditor:ChangeIDsAndPrepare( constrIDs, constrType, clearIDs )
 
 	if not dataNeeded then return end
 
-	ConstraintEditor.EditConstrs( constrIDs )
+	ConstraintEditor.GetDataForEditor( next( IDs )[1], editMode == ConstraintEditor.EditModes.MANY )
 
 end
 
 
-function ConstraintEditor.EditConstrs( constrIDs )
+-- Ask the server to send over the (optionally default) constrData for some constraint(s) by a creation ID
+--
+-- Arguments:
+--	constrID (int): The constraint creation ID representative of the data we want to get
+--	getDefault (boolean): true only if you want to ask for default data
+function ConstraintEditor.GetDataForEditor( constrID, getDefault )
+
+	local tag = getDefault and NT.GET_DEF_DATA_FOR_EDITOR or NT.GET_DATA_FOR_EDITOR
+
 	ConstraintEditor.SendDataToServer(
-		NT.GET_DATA_FOR_EDITOR,
-		ConstraintEditor.ToNetConstrIDs( constrIDs )
+		tag,
+		ConstraintEditor.ToNetConstrID( constrID )
 	)
-end
 
-
--- outdated
-function ConstraintEditor.EditConstr( constrID )
-	print(ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ))
-	ConstraintEditor.SendDataToServer(
-		NT.GET_DATA_FOR_EDITOR,
-		ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
-	)
-end
-
-
--- outdated
-function ConstraintEditor.GetDefaultConstrData( constrID )
-	ConstraintEditor.SendDataToServer(
-		NT.GET_DEF_DATA_FOR_EDITOR,
-		ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
-	)
 end
 
 
@@ -321,7 +309,8 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	local padding = 3
 
-	ConstraintEditor.HoveredConstrID = -1
+	ConstraintEditor.HoveredConstrInfo.ID	= -1
+	ConstraintEditor.HoveredConstrInfo.Type	= ""
 
 	local constrBrowser		= getConstrBrowser()
 	local constrEditor		= constrBrowser and constrBrowser.constraintEditor
@@ -453,11 +442,11 @@ function prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, con
 	local midIndex	= math.floor( #positions / 2 )
 	local midPos3D	= ( positions[midIndex] + positions[midIndex + 1] ) / 2
 
-	table.insert( textDatas, createTextData( constrID, str, padding, midPos3D, nil, overlaps ) or nil )
+	table.insert( textDatas, createTextData( constrID, constrType, str, padding, midPos3D, nil, overlaps ) or nil )
 
 	for _, data in ipairs( { { ent = ent1, pos = pos1 }, { ent = ent2, pos = pos2 } } ) do
 		if data.ent:IsWorld() then
-			table.insert( textDatas, createTextData( nil, "[World]", padding, data.pos, math.huge, overlaps ) or nil )
+			table.insert( textDatas, createTextData( nil, nil, "[World]", padding, data.pos, math.huge, overlaps ) or nil )
 		end
 	end
 
@@ -465,7 +454,7 @@ end
 
 
 
-function createTextData( constrID, str, padding, pos3D, depth, overlaps )
+function createTextData( constrID, constrType, str, padding, pos3D, depth, overlaps )
 
 	local pos2D = pos3D:ToScreen()
 	if not pos2D.visible then return end
@@ -483,6 +472,7 @@ function createTextData( constrID, str, padding, pos3D, depth, overlaps )
 
 	return {
 		constrID	= constrID or -1,
+		constrType	= constrType,
 		str			= str or "",
 		padding		= padding or 4,
 		pos			= pos2D,
@@ -504,7 +494,7 @@ function depthSortFindHover( ezData, textDatas )
 	for i = #textDatas, 1, -1 do
 
 		local textData = textDatas[i] or {}
-		local constrID = textData.constrID
+		local constrID, constrType = textData.constrID, textData.constrType
 		if not constrID then continue end
 		if not ezData[constrID] then continue end
 
@@ -513,7 +503,7 @@ function depthSortFindHover( ezData, textDatas )
 		w, h = w + padding * 2, h + padding * 2
 
 		if math.abs( cursorX - pos.x ) * 2 < w and math.abs( cursorY - pos.y ) * 2 < h then
-			ConstraintEditor.HoveredConstrID	= constrID
+			ConstraintEditor.HoveredConstrInfo	= { ID = constrID, Type = constrType }
 			ezData[constrID].weight				= ezData[constrID].weight + 1
 			textData.col						= Color( 70, 200, 255 )
 			return

@@ -1,5 +1,6 @@
 ConstraintEditor = {}
 
+
 ConstraintEditor.NetTags = {
 	CLEAR_EDITED_ENTS		= 0,
 	ADD_EDITED_ENTITY		= 1,
@@ -21,11 +22,13 @@ ConstraintEditor.NetTags = {
 	TRANSFER_CONSTRS_ENTS	= 17,
 }
 
+
 ConstraintEditor.NetBitCounts = {
 	TAG			= 5,
 	ENT_COUNT	= 13, -- up to 8192 entities can exist
 	CONSTR_ID	= 24, -- creation ids go up to 10 million
 }
+
 
 ConstraintEditor.NetWriteFuncs = {
 	[TYPE_STRING]		= net.WriteString,
@@ -39,11 +42,20 @@ ConstraintEditor.NetWriteFuncs = {
 	[TYPE_COLOR]		= net.WriteColor,
 }
 
+
 function ConstraintEditor.GetNetWriteFunc( v )
 	return ConstraintEditor.NetWriteFuncs[TypeID( v )]
 end
 
 
+-- Starts a net message with a tag and optional arguments.
+-- Note that this does not send the message, only starts it and writes some data.
+--
+-- Arguments:
+--	tag (int): A number from the ConstraintEditor.NetTags table. Used to describe the goal of the message and the data held by it.
+--	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
+--		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
+--		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
 function ConstraintEditor.NetStartWrite( tag, ... )
 
 	if not isnumber( tag ) then return end
