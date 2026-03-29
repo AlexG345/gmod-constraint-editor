@@ -90,7 +90,7 @@ local netFunctions = {
 		local constrHovered, constrID, constrType = isHoveringConstr()
 
 		if constrHovered then
-			ConstraintEditor.ChangeEnabledConstrs( { [constrID] = true }, constrType, clearSelection )
+			ConstraintEditor.SelectConstrs( { [constrID] = true }, constrType, clearSelection )
 		else
 			if clearSelection then
 				ConstraintEditor.SendDataToServer( NT.CLEAR_EDITED_ENTS )
@@ -198,12 +198,12 @@ end
 --
 -- Returns:
 --	(nil)
-function ConstraintEditor.ChangeEnabledConstrs( constrIDs, constrType, clearIDs )
+function ConstraintEditor.SelectConstrs( constrIDs, constrType, clearSelection )
 
-	local constrEditor = getConstrEditor()
-	if not constrEditor then return end
+	local constrBrowser = getConstrBrowser()
+	if not constrBrowser then return end
 
-	local dataNeeded, IDs, editMode = constrEditor:ChangeIDsAndPrepare( constrIDs, constrType, clearIDs )
+	local dataNeeded, IDs, editMode = constrBrowser.SelectIDs( constrIDs, constrType, clearSelection )
 
 	if not dataNeeded then return end
 

@@ -1,5 +1,14 @@
+----------------------------------------------------------
+--  Knows wich constraints are selected					--
+--  (= which ones the constraint editor is targetting)  --
+----------------------------------------------------------
+
 
 local PANEL = {}
+
+
+local EM = ConstraintEditor.EditModes
+
 
 function PANEL:Init()
 
@@ -11,301 +20,121 @@ function PANEL:Init()
 	self.Divider:SetDividerHeight( 5 )
 
 
-	self.Tree = self.Divider:Add( "DTree" )
-
-		function self.Tree:DoClick( node )
-
-			local constrIDs = {}
-			local constrType
-			local clearSelection = true -- TODO: add SHIFT behavior to select multiple constrs
-
-			if node.constrID then
-				constrType = node:GetParentNode().constrType
-				constrIDs = { [node.constrID] = true } -- TODO: allow unselect
-			else
-				constrType = node.constrType
-
-				for _, childNode in pairs( node:GetChildNodes() ) do
-					if childNode.constrID then
-						constrIDs[childNode.constrID] = true
-					end
-				end
-			end
-
-			ConstraintEditor.ChangeEnabledConstrs( constrIDs, constrType, clearSelection )
-
-		end
-
-
-	self.Divider:SetTop( self.Tree )
+	self.constraintTree = self.Divider:Add( "DConstraintTree" )
+	self.Divider:SetTop( self.constraintTree )
 
 	self.constraintEditor = self.Divider:Add( "DConstraintEditor" )
-
 	self.Divider:SetBottom( self.constraintEditor )
 
-	self.constraintEditor.ConstraintBrowser = self
-
-	-- Ordered constraint types
-	self.ConstrTypes = {
-		"Axis",
-		"AdvBallsocket",
-		"Ballsocket",
-		"Elastic",
-		"Hydraulic",
-		"Keepupright",
-		"Motor",
-		"Muscle",
-		"NoCollide",
-		"Pulley",
-		"Rope",
-		"Slider",
-		"Weld",
-		"Winch",
+	self.selectionData = {
+		dataType	= "",
+		IDs			= {},
+		count		= 0,
+		mode		= EM.None
 	}
 
-	self.DataPerConstrType = {
-		Axis			= { icon = "icon16/cd.png", },
-		AdvBallsocket	= { icon = "icon16/color_wheel.png", },
-		Ballsocket		= { icon = "icon16/sport_golf.png", },
-		Elastic			= { icon = "icon16/connect.png", },
-		Hydraulic		= { icon = "icon16/newspaper.png", },
-		Keepupright		= { icon = "icon16/arrow_up.png", },
-		Motor			= { icon = "icon16/cd_burn.png", },
-		Muscle			= { icon = "icon16/sport_football.png", },
-		Pulley			= { icon = "icon16/vector.png", },
-		Rope			= { icon = "icon16/link_break.png", },
-		Slider			= { icon = "icon16/control_equalizer.png", },
-		Weld			= { icon = "icon16/link.png", },
-		Winch			= { icon = "icon16/webcam.png", },
-		NoCollide		= { icon = "icon16/collision_off.png", },
-	}
-
-	self.defaultIcon	= "icon16/cog_add.png"
-
 end
 
-
-function PANEL:GetDataPerConstrType( constrType, create )
-
-	if not isstring( constrType ) then return false end
-
-	local t = self.DataPerConstrType
-
-	if create and not t[constrType] then
-		t[constrType] = {}
-	end
-
-	return t[constrType]
-
-end
-
--- Adds a node for that type of constraint if not already present
-function PANEL:AddConstrType( constrType )
-
-	local data = self:GetDataPerConstrType( constrType, true )
-
-	if not IsValid( data.panel ) then
-		data.panel = self.Tree:AddNode( constrType, data.icon or self.defaultIcon )
-		data.panel.constrType = constrType
-	end
-
-	return data
-
-end
-
-
-function PANEL:RemoveConstrType( constrType, data )
-
-	data = data or self:GetDataPerConstrType( constrType )
-
-	if istable( data ) and data.panel then
-		data.panel:Remove()
-		data.panel = nil
-		data.constrNodes = nil
-	end
-
-end
-
-
-function PANEL:ClearTreeVisual()
-
-	local rootNode = self.Tree:Root()
-	rootNode.ChildNodes = nil
-	rootNode:CreateChildNodes()
-	return rootNode
-
-end
 
 
 function PANEL:Clear()
 
-	self:ClearTreeVisual()
+	self.constraintTree:Clear()
 
-	self:ClearSelection()
-
-	for constrType, data in pairs( self.DataPerConstrType ) do
-
-		self:RemoveConstrType( constrType, data )
-
-	end
+	self.constraintEditor:PrepareForFill()
 
 end
 
 
-function PANEL:SortConstrTypes()
+-- Counts and saves how many IDs are currently selected, updates the edit mode accordingly
+--
+-- Arguments:
+--	(nil)
+--
+-- Returns:
+--	(boolean) true only if the selection data's edit mode has changed
+function PANEL:UpdateEditMode()
 
-	local rootNode = self:ClearTreeVisual()
-	local constrTypes = table.GetKeys( self.DataPerConstrType )
-	table.sort( constrTypes )
+	local t = self.selectionData
 
-	for _, constrType in ipairs( constrTypes ) do
+	local editMode = t.editMode
 
-		local data = self:GetDataPerConstrType( constrType )
-		local node = istable( data ) and data.panel
+	local count = table.Count( t.IDs )
+	t.count		= count
+	t.editMode	= ( count < 1 and EM.NONE ) or ( count == 1 and EM.SINGLE) or EM.MANY
 
-		if node then
-			--[[
-			rootNode:AddPanel( node )
-			node:SetParentNode( rootNode )
-			node:SetTall( rootNode:GetLineHeight() )
-			node:SetRoot( rootNode:GetRoot() )
-			node:SetDrawLines( not rootNode:IsRootNode() )
-			rootNode:InstallDraggable( node )
-			]]
-			rootNode.ChildNodes:Add( node )
+	return editMode ~= t.editMode
+
+end
+
+
+
+-- Prepare for a change in the selected IDs
+--
+-- Arguments:
+--	newIDs (table): A table whose keys are IDs, and whose values should be boolean (true to select, false to unselect)
+--	dataType (string): The "type of data" (e.g. Rope, Weld, ...)
+--	clearSelection (boolean | nil): true only if you want to unselect all IDs beforehand
+--
+-- Returns:
+--	dataNeeded (boolean | nil): true only if the editor needs fresh data from elsewhere
+--	IDs (table | nil): The final selected IDs
+--	(int | nil): The final edit mode
+function PANEL:SelectIDs( newIDs, dataType, clearSelection )
+
+	local t = self.selectionData
+
+	if clearSelection then
+		-- If we clear the current selectionn, no need to check dataType's (arg) consistency with the current one
+		self.IDs = {}
+	else
+		-- TODO: might want to move this check after since it's possible that we're going to disable all current IDs, then enable new ones for a new data type.
+		-- (though this would complicates things a lot)
+		if ( t.editMode ~= EM.NONE ) and ( dataType ~= t.dataType ) then return end
+	end
+
+	t.dataType = dataType or ""
+
+	local IDs = t.IDs
+
+	-- Enable or disable the given IDs
+	if newIDs then
+		for newID, enabled in pairs( newIDs ) do
+			IDs[newID] = enabled or nil
 		end
-
-		rootNode:InvalidateChildren() -- call this or the nodes won't show up!
-
 	end
 
-end
+	local editModeChanged = self:UpdateEditMode()
 
-
--- TODO: add checks for redundant constrIDs
-function PANEL:AddConstrs( surfaceConstrData )
-
-	if not istable( surfaceConstrData ) then return end
-
-	for constrType, constrData in pairs( surfaceConstrData ) do
-
-		local data = self:AddConstrType( constrType )
-		data.constrNodes = data.constrNodes or {}
-		local constrTypeNode = data.panel
-
-		for constrID, _ in pairs( constrData ) do
-			if not data.constrNodes[constrID] then
-				data.constrNodes[constrID] = self:AddConstrToNode( constrTypeNode, constrID )
-			end
-		end
-
+	-- Clear the editor now to prevent the user from (accidentally)
+	-- sending current values meant for the old IDs to the new IDs
+	if editModeChanged then
+		self.constraintEditor:PrepareForFill()
 	end
 
-	self:SortConstrTypes()
+	local dataNeeded = modeChanged and t.editMode ~= EM.NONE
 
-end
+	return dataNeeded, IDs, t.editMode
 
-
-function PANEL:AddConstrToNode( constrTypeNode, constrID )
-
-	local node = constrTypeNode:AddNode( ( "[%s]" ):format( constrID ), "icon16/application_view_columns.png" )
-	node.constrID = constrID
-	return node
-
-end
-
---[[
-function PANEL:SetConstrs( surfaceConstrData )
-
-	self:Clear()
-	self.constraintEditor:AddConstr()
-	self:AddConstrs( surfaceConstrData )
-
-end
-]]
-
-
-function PANEL:ClearSelection()
-	self.constraintEditor:ClearSelection()
 end
 
 
 function PANEL:RemoveConstr( constrID )
 
-	local editor = self.constraintEditor
-	if not editor then return end
+	self:SelectIDs(
+		{ [constrID] = false },
+		self.selectionData.dataType
+	)
 
-	local constrData = editor:GetConstrData()
-	if constrData and editor.constrID == constrID then
-		editor:ClearSelection() -- clear
-	end
-
-	local constrNode, constrNodes, constrType = self:FindConstrNode( constrID )
-	if not constrNode then return end
-
-	constrNodes[constrID] = nil
-	local constrTypeNode = constrNode:GetParentNode()
-	constrNode:Remove()
-
-	if constrTypeNode:GetChildNodeCount() <= 1 then
-		self:RemoveConstrType( constrType )
-	end
+	self.constraintTree:RemoveConstr( constrID )
 
 end
 
 
-function PANEL:FindConstrNode( constrID )
-
-	for constrType, data in pairs( self.DataPerConstrType ) do
-
-		local constrNodes = data.constrNodes
-		local constrNode = constrNodes and constrNodes[constrID]
-		if constrNode then return constrNode, constrNodes, constrType end
-
-	end
-
+function PANEL:AddConstrs( surfaceConstrsData )
+	self.constraintTree:AddConstrs( surfaceConstrsData )
 end
 
-
-function PANEL:FindTypeNode( constrType )
-
-	for _, constrTypeNode in pairs( self.Tree:Root():GetChildNodes() ) do
-
-		if constrTypeNode.constrType == constrType then return constrTypeNode end
-
-	end
-
-end
-
-
--- adding constrType lets you force the browser to add a constraint node
-function PANEL:SelectConstrNode( constrID, constrType )
-
-	local constrNode = self:FindConstrNode( constrID )
-	if constrType and not constrNode then
-		self:AddConstrs( { [constrType] = { constrID } } )
-		constrNode = self:FindConstrNode( constrID )
-	end
-
-	if not constrNode then return end
-
-	constrNode:ExpandTo( true )
-
-	self.Tree:SetSelectedItem( constrNode )
-
-end
-
-
-function PANEL:SelectTypeNode( constrType )
-
-	local constrTypeNode = self:FindTypeNode( constrType )
-	if not constrTypeNode then return end
-
-	--constrTypeNode:ExpandTo( true )
-
-	self.Tree:SetSelectedItem( constrTypeNode )
-
-end
 
 
 derma.DefineControl( "DConstraintBrowser", "", PANEL, "DPanel" )

@@ -1,8 +1,21 @@
+----------------------------
+--  Lets you edit values  --
+----------------------------
+
+
 local PANEL = {}
+
 
 local NT = ConstraintEditor.NetTags
 local EM = ConstraintEditor.EditModes
 
+----------------------------------------------------------------------------------
+-- TODO-NEXT:	Move action buttons to the constraint browser??					--
+--				The constraint browser would be the one who knows how to apply data to some ids	--
+--				The constraint editor would just handle the values inside the data --
+--				The constraint tree would just let you select the ids
+--				it's good because browser would be the proper link between the two "sub elements"... --
+----------------------------------------------------------------------------------
 
 function PANEL:Init()
 
@@ -32,7 +45,9 @@ function PANEL:Init()
 		ButtonApply:SetImage( "icon16/database_refresh.png" )
 		ButtonApply:SetText( "Apply Changes" )
 
+		-- TODO: this is VERY outdated
 		function ButtonApply:DoClick()
+			--[[
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
@@ -40,6 +55,7 @@ function PANEL:Init()
 			else
 				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 			end
+			]]
 		end
 
 
@@ -48,8 +64,11 @@ function PANEL:Init()
 		ButtonDuplicate:SetImage( "icon16/application_double.png" )
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
+		-- TODO: this is outdated
 		function ButtonDuplicate:DoClick()
+			--[[
 			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			]]
 		end
 
 
@@ -58,8 +77,11 @@ function PANEL:Init()
 		ButtonDelete:SetImage( "icon16/database_delete.png" )
 		ButtonDelete:SetText( "Remove Constraint" )
 
+		-- TODO: this is outdated
 		function ButtonDelete:DoClick()
+			--[[
 			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			]]
 		end
 
 
@@ -82,7 +104,7 @@ function PANEL:Init()
 		ButtonPaste:SetText( "Paste all values" )
 
 		function ButtonPaste:DoClick()
-			editor:TryApplyData( editor.copiedConstrData )
+			editor:SafeSetRowsValues( editor.copiedConstrData )
 		end
 
 		ButtonPaste:SetEnabled( false )
@@ -98,7 +120,7 @@ function PANEL:Init()
 
 	self.copiedConstrData	= {}
 
-	self:ClearSelection()
+	self:PrepareForFill()
 
 end
 
@@ -118,15 +140,6 @@ function PANEL:PerformLayout( width, height )
 
 end
 
-function PANEL:ClearSelection()
-
-	self.IDs			= {}
-	self.editCount		= 0
-	self.editMode		= EM.NONE
-
-	self:PrepareForFill()
-
-end
 
 
 function PANEL:PrepareForFill()
@@ -141,111 +154,8 @@ function PANEL:PrepareForFill()
 end
 
 
--- whether we're not editing anything, editing a single thing, or editing many things
-local function getEditMode( IDCount )
-	return ( IDCount < 1 and EM.NONE ) or ( IDCount == 1 and EM.SINGLE) or EM.MANY
-end
-
-
--- Prepares the editor for a change in the selected IDs
--- Arguments:
---	newIDs (table): A table whose keys are IDs, and whose values should be boolean (true to select, false to unselect)
---	dataType (string): The "type of data" (e.g. Rope, Weld, ...)
---	clearSelection (boolean | nil): true only if you want to unselect all IDs beforehand
---
--- Returns:
---	(boolean | nil): true only if the editor needs fresh data from elsewhere
---	IDs (table | nil): The final selected IDs
---	(int | nil): The final edit mode
-function PANEL:ChangeIDsAndPrepare( newIDs, dataType, clearSelection )
-
-	local editMode = self.editMode
-
-	if clearSelection then
-		-- In that case no need to check dataType (arg)
-		self:ClearSelection()
-	else
-		-- TODO: might want to move this check after since it's possible that we're going to disable all current IDs, then enable new ones for a new data type.
-		-- though this would complicates things a lot
-		if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return end
-	end
-
-	if not newIDs then return end
-
-	-- Enable/disable the given IDs
-	local IDs = self.IDs
-	for newID, enabled in pairs( newIDs ) do
-		IDs[newID] = enabled or nil
-	end
-
-	self.editCount = table.Count( IDs )
-
-	self.editMode = getEditMode( self.editCount )
-
-	local editModeChanged = editMode ~= self.editMode
-
-	-- Clear the editor now to prevent the user from (accidentally)
-	-- sending current values meant for the old IDs to the new IDs
-	if editModeChanged then self:PrepareForFill() end
-
-	return editModeChanged and self.editMode ~= EM.NONE, IDs, self.editMode
-
-end
-
-
-
-
-
---[[
--- this time without type handling because it's ANNOYING and badly handled everywhere else!!
--- constrData must use integer keys
-function PANEL:AddConstr( values, args )
-
-	print("ADD CONSTR")
-	if not values then return end
-	print("\tvalues found")
-
-	local dataType		= values.Type
-	local editMode		= self.editMode
-	print("\tdataType vs selfCDType:", dataType, self.constrData.Type)
-
-	-- Don't edit constraints of a different type at once
-	if editMode ~= EM.NONE and ( dataType ~= self.constrData.Type ) then return end
-	print("\ttype is correct")
-
-	local constrID = values.constrID
-
-	if not constrID then return end
-	print("\tconstrID found:", constrID)
-
-	-- TODO: check the line below is correct
-	local enableEdit	= values and args and not self.IDs[constrID]
-	print("\tenableEdit:", enableEdit)
-	self.IDs[constrID]	= enableEdit or nil
-
-	self.editCount	= self.editCount + ( enableEdit and 1 or -1 )
-	local newEditMode	= getEditMode( self.editCount )
-	print("\tconstrCount:", self.editCount)
-
-	-- No change needed if we're already not editing, or editing the constraint(s) the correct way
-	if editMode == newEditMode then return end
-
-	self.editMode = newEditMode
-	print("\tnewEditMode:", newEditMode)
-
-	if newEditMode == EM.NONE then
-		self:ClearSelection()
-	else
-		self:Fill( values, args )
-	end
-
-end
-]]
-
-
 function PANEL:Fill( values, args )
 
-	print("filling menu")
 	self:PrepareForFill()
 
 	self:CreateRows( values, args )
@@ -274,7 +184,8 @@ function PANEL:CreateRows( values, args )
 	self.constrData.Type = values.Type
 	self.args = args
 
-	local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
+	--local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
+	local rowName = "Constraint Properties"
 
 	for i, arg in ipairs( args ) do
 
@@ -354,7 +265,6 @@ end
 
 function PANEL:SetRowsValues( values, isCache )
 
-	print("SET ROWS VALUES")
 	for i, value in pairs( values ) do
 
 		local row = self.rows[i]
