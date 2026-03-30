@@ -9,20 +9,18 @@ local PANEL = {}
 local NT = ConstraintEditor.NetTags
 local EM = ConstraintEditor.EditModes
 
-----------------------------------------------------------------------------------
--- TODO-NEXT:	Move action buttons to the constraint browser??					--
---				The constraint browser would be the one who knows how to apply data to some ids	--
---				The constraint editor would just handle the values inside the data --
---				The constraint tree would just let you select the ids
---				it's good because browser would be the proper link between the two "sub elements"... --
-----------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------
+-- TODO-NEXT:	Move "server" action buttons to the constraint browser??										--
+--				.	The constraint tree would let you select constraints: it should just be a 'visualizer'.		--
+--				.	The constraint editor would handle constraint properties (modifying, copying, pasting...).	--
+--				.	The constraint browser would be able to tell the server to change the constraints selected	--
+--					using the tree, with the data from the constraint editor.									--
+--					It would be a kind of link between the two other menus and the server itself				--
+------------------------------------------------------------------------------------------------------------------
 
 function PANEL:Init()
 
 	local editor = self
-
-	self.constrArgsCache = {}
-	self.constrDataCache = {}
 
 	self.Divider = self:Add( "DVerticalDivider" )
 	self.Divider:Dock( FILL )
@@ -51,7 +49,7 @@ function PANEL:Init()
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
-				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTR, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			else
 				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 			end
@@ -67,7 +65,7 @@ function PANEL:Init()
 		-- TODO: this is outdated
 		function ButtonDuplicate:DoClick()
 			--[[
-			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			]]
 		end
 
@@ -80,7 +78,7 @@ function PANEL:Init()
 		-- TODO: this is outdated
 		function ButtonDelete:DoClick()
 			--[[
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTR, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			]]
 		end
 
@@ -94,7 +92,7 @@ function PANEL:Init()
 		ButtonCopy:SetText( "Copy all values" )
 
 		function ButtonCopy:DoClick()
-			editor:CopyFullData()
+			editor:CopyFullProperties()
 			editor.ButtonPaste:SetEnabled( editor:CanPaste() )
 		end
 
@@ -104,7 +102,7 @@ function PANEL:Init()
 		ButtonPaste:SetText( "Paste all values" )
 
 		function ButtonPaste:DoClick()
-			editor:SafeSetRowsValues( editor.copiedConstrData )
+			editor:SafeSetProperties( editor.copiedProperties )
 		end
 
 		ButtonPaste:SetEnabled( false )
@@ -118,9 +116,8 @@ function PANEL:Init()
 		color	= string.ToColor,
 	}
 
-	self.copiedConstrData	= {}
-
-	self:PrepareForFill()
+	self.copiedProperties = self:GetEmptyProperties()
+	self:Clear()
 
 end
 
@@ -141,26 +138,197 @@ function PANEL:PerformLayout( width, height )
 end
 
 
+-- Gives the simplest properties possible
+--
+-- Returns:
+--	(table): Table containing:
+--		values (table): Empty table for the properties' values
+--		args (table): Empty table for the properties' names
+function PANEL:GetEmptyProperties()
+	return { values = {}, args = {} }
+end
 
-function PANEL:PrepareForFill()
 
-	self.Properties:Clear()
-	self.rows = {}
+-- Checks whether the given properties from the editor is a subset of other such properties
+-- without checking their values themselves: only their type and name. They must have the same order too.
+--
+-- Arguments:
+--	source (table): Table containing:
+--		values (table): The properties' values
+--		args (table): The properties' names
+--	dest (table): Table with the same structure as source (arg)
+--
+-- Returns:
+--	(nil)
+function PANEL:PropertiesAreSubset( subProperties, properties )
 
-	self.args				= {}
-	self.constrData			= {}
-	self.constrDataCache	= {}
+	local subValues, subArgs	= subProperties.values, subProperties.args
+	local values, args			= properties.values, properties.args
+
+	for i, v in pairs( subValues ) do
+		if type( subValues[i] ) ~= type( values[i] ) or subArgs[i] ~= args[i] then
+			return false
+		end
+	end
+
+	return true
 
 end
 
 
-function PANEL:Fill( values, args )
 
-	self:PrepareForFill()
+function PANEL:Clear()
 
-	self:CreateRows( values, args )
+	self.Properties:Clear()
+	self.rows = {}
 
-	self:SetRowsValues( values, args, true )
+	self.cachedProperties = self:GetEmptyProperties()
+	self.editedProperties = self:GetEmptyProperties()
+
+end
+
+
+-- Creates (initially empty) rows inside of of the editor using a properties table
+-- Does not delete already existing rows: you might want to first clear the editor before using this.
+--
+-- Arguments:
+--	properties (table): Table containing:
+--		values (table): The properties' values for the rows (should use the same keys as self.rows)
+--		args (table): The properties' names for the rows (should use the same keys as self.rows)
+--
+-- Returns:
+--	(nil)
+function PANEL:CreateRows( properties )
+
+	--local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
+	local rowName	= "Constraint Properties"
+	local values	= properties.values
+	local args		= properties.args
+
+	for i, arg in ipairs( args ) do
+
+		local rowValue	= values[i]
+		local rowType	= IsColor( rowValue ) and "color" or type( rowValue )
+		local rowTypeRestoreFunc = self.typeRestoreFuncs[rowType]
+
+		--print(i,arg,value,rowType)
+
+		local editor = self
+
+		local row = self.Properties:CreateRow( rowName, arg )
+
+			self.rows[i] = row
+
+			row:Setup( isbool( rowValue ) and "Bool" or "Generic", { readonly = not rowTypeRestoreFunc } )
+
+			function row:DataChanged( v ) self:SetValue( v ) end
+
+			--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
+			local r, g, b, a = 140, 220, 100, 100
+
+			function row:SetValue( newValue, newValueIsProperlyTyped, setInnerValue )
+
+				if not newValueIsProperlyTyped then newValue = typeRestore( newValue ) end
+				newString = tostring( newValue )
+
+				--print("row", v)
+				if setInnerValue then row.Inner:SetValue( newString ) end
+
+				-- Better to check for the string instead of the actual value because users input a string...
+				local changed = tostring( editor.cachedProperties.values[i] ~= newString )
+
+				self:SetBGColor( r, g, b, a )
+				self:SetPaintBackgroundEnabled( changed )
+
+				editor.editedProperties.values[i] = ( changed or nil ) and v
+
+			end
+
+			--row:SetValue( value, true, true )
+
+			if rowType == "Entity" then
+
+				local buttonSwitch = row:Add( "DButton" )
+
+					row.Button = buttonSwitch
+
+					buttonSwitch:SetImage( "icon16/eye.png" )
+					buttonSwitch:SetText( "Switch entity" )
+					buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
+
+					buttonSwitch:DockMargin(0, 1, 1, 1)
+					buttonSwitch:Dock(RIGHT)
+					local s = row:GetTall()
+					buttonSwitch:SetSize( 2 * s, s )
+
+					function buttonSwitch:DoClick()
+						row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
+					end
+
+					local oldPL = row.PerformLayout
+					function row:PerformLayout()
+						oldPL( self )
+						self.Button:SetWide( self:GetWide() * 0.1 )
+					end
+
+			end
+
+	end
+
+	self.ButtonPaste:SetEnabled( self:CanPaste() )
+
+end
+
+
+-- Forcefully replaces the properties of some existing rows (and optionally the editor's cached properties)
+--
+-- Arguments:
+--	properties (table): Table containing:
+--		values (table): The properties' values for the rows (should use the same keys as self.rows)
+--		args (table): The properties' names for the rows (should use the same keys as self.rows)
+--	setCache (boolean): true only to replace the editor's cached properties with properties (arg)
+--
+-- Returns:
+--	(nil)
+function PANEL:SetProperties( properties, setCache )
+
+	if setCache then self.cachedProperties.type = properties.type end
+
+	local values = properties.values
+	local cachedValues = self.cachedProperties.values
+
+	for i, value in pairs( values ) do
+
+		local row = self.rows[i]
+		if not row then continue end
+
+		if setCache then cachedValues[i] = value end
+
+		row:SetValue( value, true, true )
+
+	end
+
+	self.ButtonPaste:SetEnabled( self:CanPaste() )
+
+end
+
+
+-- Deletes all rows, edited and cached properties, then creates and fills rows using given properties
+--
+-- Arguments:
+--	properties (table): Table containing:
+--		values (table): The properties' values for the rows
+--		args (table): The properties' names for the rows
+--
+-- Returns:
+--	(nil)
+function PANEL:Fill( properties )
+
+	self:Clear()
+
+	self:CreateRows( properties )
+
+	self:SetProperties( properties, true )
 
 	--[[ TODO: add this back
 	if constrType then
@@ -179,140 +347,46 @@ function PANEL:Fill( values, args )
 end
 
 
-function PANEL:CreateRows( values, args )
+-- Replaces the properties values of some existing rows, only if given properties are a subset of the editor cached properties.
+--
+-- Arguments:
+--	properties (table): Table containing:
+--		values (table): The properties' values for the rows (should use the same keys as self.rows)
+--		args (table): The properties' names for the rows (should use the same keys as self.rows)
+--
+-- Returns:
+--	(nil)
+function PANEL:SafeSetProperties( properties )
 
-	self.constrData.Type = values.Type
-	self.args = args
+	if not ( properties and self.rows and self:PropertiesAreSubset( properties, self.cachedProperties ) ) then return end
 
-	--local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
-	local rowName = "Constraint Properties"
-
-	for i, arg in ipairs( args ) do
-
-		local value	= values[i]
-		local vType	= type( value )
-		if vType == "table" and IsColor( value ) then
-			vType = "color"
-		end
-
-		--print(i,arg,value,vType)
-
-		local typeRestore = self.typeRestoreFuncs[vType]
-
-		local editor = self
-
-		local row = self.Properties:CreateRow( rowName, arg )
-
-			self.rows[i] = row
-
-			row:Setup( vType == "boolean" and "Bool" or "Generic", { readonly = not typeRestore } )
-
-			function row:DataChanged( v ) self:SetValue( v ) end
-
-			--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
-			local r, g, b, a = 140, 220, 100, 100
-
-			function row:SetValue( v, isOriginal, doInner )
-
-				if not isOriginal then v = typeRestore( v ) end
-				vString = tostring( v )
-
-				--print("row", v)
-				if doInner then row.Inner:SetValue( vString ) end
-
-				local changed = row.cacheString ~= vString
-
-				self:SetBGColor( r, g, b, a )
-				self:SetPaintBackgroundEnabled( changed )
-
-				editor.constrData[i] = ( changed or nil ) and v
-
-			end
-
-			--row:SetValue( value, true, true )
-
-			if vType == "Entity" then
-
-				local buttonSwitch = row:Add( "DButton" )
-
-					row.Button = buttonSwitch
-					buttonSwitch:SetImage( "icon16/eye.png" )
-					buttonSwitch:SetText( "Switch entity" )
-					buttonSwitch:DockMargin(0, 1, 1, 1)
-					buttonSwitch:Dock(RIGHT)
-					local s = row:GetTall()
-					buttonSwitch:SetSize( 2 * s, s )
-					buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
-
-					function buttonSwitch:DoClick()
-						row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
-					end
-
-					local oldFunc = row.PerformLayout
-					function row:PerformLayout()
-						oldFunc( self )
-						self.Button:SetWide( self:GetWide() * 0.1 )
-					end
-
-			end
-
-	end
-
-	self.ButtonPaste:SetEnabled( self:CanPaste() )
+	self:SetProperties( properties )
 
 end
 
 
-function PANEL:SetRowsValues( values, isCache )
 
-	for i, value in pairs( values ) do
+function PANEL:GetEditedValues()
 
-		local row = self.rows[i]
-		if not row then continue end
-
-		if isCache then row.cacheString = tostring( value ) end
-
-		row:SetValue( value, true, true )
-
-	end
-
-	self.ButtonPaste:SetEnabled( self:CanPaste() )
-
-end
-
-
--- tries to apply new data upon existing rows
-function PANEL:SafeSetRowsValues( values )
-
-	if not ( values and self.constrData ) then return end
-
-	if values.Type ~= self.constrData.Type then return end
-
-	self:SetRowsValues( values )
-
-end
-
-
-function PANEL:GetConstrData()
-
-	return self.constrData
+	return self.editedProperties.values
 
 end
 
 
 function PANEL:CanPaste()
 
-	return self.constrData and self.constrData.Type and self.constrData.Type == self.copiedConstrData.Type
+	return self:PropertiesAreSubset( self.copiedProperties, self.cachedProperties )
 
 end
 
 
-function PANEL:CopyFullData()
+function PANEL:CopyFullProperties()
 
-	if not ( self.constrDataCache and self.constrData ) then return end
+	-- Copy all cached properties
+	table.CopyFromTo( self.cachedProperties, self.copiedProperties )
 
-	table.CopyFromTo( self.constrDataCache, self.copiedConstrData )
-	table.Merge( self.copiedConstrData, self.constrData )
+	-- Override with edited properties
+	table.Merge( self.copiedProperties, self.editedProperties )
 
 end
 

@@ -183,14 +183,14 @@ local netFunctions = {
 	end,
 	]]
 
-	[NT.REMOVE_CONSTR] = function( ply )
+	[NT.REMOVE_CONSTRS] = function( ply )
 		local constrs = getNetConstrs( ply )
 		for _, constr in ipairs( constrs ) do
 			ConstraintEditor.DeleteConstr( constr )
 		end
 	end,
 
-	[NT.UPDATE_CONSTR] = function( ply )
+	[NT.UPDATE_CONSTRS] = function( ply )
 		local newConstrData = net.ReadTable()
 		local constrs = getNetConstrs( ply )
 		for _, constr in ipairs( constrs ) do
@@ -198,7 +198,7 @@ local netFunctions = {
 		end
 	end,
 
-	[NT.DUPLIC_CONSTR] = function( ply )
+	[NT.DUPLIC_CONSTRS] = function( ply )
 		local constrs = getNetConstrs( ply )
 		for _, constr in ipairs( constrs ) do
 			ConstraintEditor.CreateConstrFromConstr( constr, {}, ply )

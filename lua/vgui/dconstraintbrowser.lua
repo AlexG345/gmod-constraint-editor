@@ -41,7 +41,7 @@ function PANEL:Clear()
 
 	self.constraintTree:Clear()
 
-	self.constraintEditor:PrepareForFill()
+	self.constraintEditor:Clear()
 
 end
 
@@ -109,7 +109,7 @@ function PANEL:SelectIDs( newIDs, dataType, clearSelection )
 	-- Clear the editor now to prevent the user from (accidentally)
 	-- sending current values meant for the old IDs to the new IDs
 	if editModeChanged then
-		self.constraintEditor:PrepareForFill()
+		self.constraintEditor:Clear()
 	end
 
 	local dataNeeded = modeChanged and t.editMode ~= EM.NONE
@@ -136,5 +136,16 @@ function PANEL:AddConstrs( surfaceConstrsData )
 end
 
 
+function PANEL:UpdateServer()
+
+	local constrIDs		= self.constrIDs
+	local constrData	= self.constraintEditor:GetEditedValues()
+
+	ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( constrIDs ) )
+
+	-- TODO: add back constraint type selection
+	-- ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+
+end
 
 derma.DefineControl( "DConstraintBrowser", "", PANEL, "DPanel" )

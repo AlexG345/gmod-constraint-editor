@@ -105,7 +105,7 @@ local netFunctions = {
 
 		if constrHovered then
 			ConstraintEditor.SendDataToServer(
-				NT.REMOVE_CONSTR,
+				NT.REMOVE_CONSTRS,
 				ConstraintEditor.ToNetConstrID( constrID )
 			)
 		else
