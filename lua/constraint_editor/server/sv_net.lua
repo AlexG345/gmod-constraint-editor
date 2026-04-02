@@ -3,12 +3,14 @@ include( "constraint_editor/sv_constr_maker.lua" )
 include( "constraint_editor/sv_misc.lua" )
 
 
+util.AddNetworkString( "constraint_editor_net" )
+
 
 local NT				= ConstraintEditor.NetTags
 local BIT_COUNT			= ConstraintEditor.NetBitCounts
 
 --[[
-function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
+function ConstraintEditor.NetSend( tag, data, ply, ent )
 
 	if not isnumber( tag ) then return end
 	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
@@ -18,7 +20,7 @@ function ConstraintEditor.SendDataToClient( tag, data, ply, ent )
 		if istable( data ) then
 			net.WriteTable( data )
 		elseif isnumber( data ) then
-			net.WriteUInt( data, BIT_COUNT.CONSTR_ID )
+			net.WriteUInt( data, BIT_COUNT.MAX_CREATION_ID )
 		elseif isentity( data ) then
 			net.WriteEntity( data )
 		end
@@ -28,32 +30,40 @@ end
 ]]
 
 
-function ConstraintEditor.SendDataToClient( tag, ply, ... )
+function ConstraintEditor.NetSend( tag, ply, ... )
 
-	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
+	if not ( istable( ply ) or isentity( ply ) and ply:IsPlayer() ) then return end
 
-	ConstraintEditor.NetStartWrite( tag, ... )
+	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
 
 	net.Send( ply )
 
 end
 
 
+function ConstraintEditor.NetBroadcast( tag, ... )
+
+	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
+
+	net.Broadcast()
+
+end
+
+
 -- Make constraints from constrs show up in ply's editor
-function ConstraintEditor.AddEditedConstrs( constrs, ply )
+function ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 
 	if not ply then return end
 	local tool = ConstraintEditor.GetTool( ply )
 
-	if not constrs or next( constrs ) == nil then
+	if not constr then
 		if tool then tool:SetStage( 1 ) end
 		return
 	end
 
-	local constr = select(2, next(constrs)) -- Choose first constraint in constrs (arg)
 	local constrData, desc
 
-	if #constrs > 1 then
+	if getDefault then
 		constrData, desc = ConstraintEditor.GetConstrDataDefault( constr, true )
 	else
 		constrData, desc = ConstraintEditor.GetConstrData( constr, true )
@@ -63,94 +73,61 @@ function ConstraintEditor.AddEditedConstrs( constrs, ply )
 
 	if tool then tool:SetStage( 2 ) end
 
-	ConstraintEditor.SendDataToClient(
-		NT.FILL_EDITOR, ply,
+	ConstraintEditor.NetSend(
+		NT.FILL_CONSTR_EDITOR, ply,
 		{ { constrData, desc.Args } }
 	)
 
 end
 
-
--- TODO: remove this (outdated)
--- Lets the player's editor edit all constraints under the same type as constr at once
--- A constr entity is needed, otherwise a table of known keys per constraint type would be needed.
--- With the current approach only a table of known values per constraint type is needed, and this table already exists.
--- TODO: check this function and related systems (ConstraintEditor.DefaultizeConstrData...) work
-function ConstraintEditor.AddEditedConstrType( constr, ply )
-
-	if not ply then return end
-
-	local tool = ply.GetTool( ConstraintEditor.Mode )
-
-	if not constr then
-		if tool then tool:SetStage( 1 ) end
-		return
-	end
-
-	local constrData, desc = ConstraintEditor.GetConstrData( constr )
-	if not ( constrData and desc ) then return end
-
-	-- TODO: make new stage for this edit
-	if tool then tool:SetStage( 1 ) end
-	constrData.constrID = nil
-	ConstraintEditor.DefaultizeConstrData( constrData )
-	ConstraintEditor.TransformConstrDataKeys( constrData, desc, true )
-
-	ConstraintEditor.SendDataToClient(
-		NT.FILL_EDITOR, ply,
-		{ { constrData, desc.Args } }
-	)
-
-end
 
 
 function ConstraintEditor.LeftClick( ent, ply )
-	ConstraintEditor.SendDataToClient(
-		NT.LEFT_CLICK, ply,
+	ConstraintEditor.NetSend(
+		NT.TOOLGUN_LEFT_CLICK, ply,
 		{ ent }
 	)
 end
 
 
 function ConstraintEditor.RightClick( ply )
-	ConstraintEditor.SendDataToClient(
-		NT.RIGHT_CLICK, ply
+	ConstraintEditor.NetSend(
+		NT.TOOLGUN_RIGHT_CLICK, ply
 	)
 end
 
 
 function ConstraintEditor.Reload( ply )
-	ConstraintEditor.SendDataToClient(
-		NT.RELOAD, ply
+	ConstraintEditor.NetSend(
+		NT.TOOLGUN_MIDDLE_CLICK, ply
 	)
 end
 
 
-local function getNetConstrs( ply )
+local function getNetConstrs( ply, constrCount )
 
-	local constrCount = net.ReadUInt( BIT_COUNT.ENT_COUNT )
-	local validConstrCount = 0
-	local constrs = {}
-	local bci = BIT_COUNT.CONSTR_ID
+	constrCount				= constrCount or net.ReadUInt( BIT_COUNT.MAX_ENT_ID )
+	local validConstrCount	= 0
+	local constrs			= {}
+	local bit_count			= BIT_COUNT.MAX_CREATION_ID
+
+	local badConstrIDs = {}
 
 	for i = 1, constrCount do
 
-		local constrID = net.ReadUInt( bci )
+		local constrID = net.ReadUInt( bit_count )
 
 		-- safety check
 		local constr = ConstraintEditor.AccessConstraint( ply, constrID )
 
-		if not constr then
-			ConstraintEditor.SendDataToClient(
-				NT.FORGET_CONSTR, ply,
-				ConstraintEditor.ToNetConstrID( constrID )
-			)
-		elseif not IsValid ( constr ) then
-			ConstraintEditor.ForgetConstr( constrID )
+		if not IsValid( constr ) then
+			table.insert( badConstrIDs, { [constrID] = true } )
 		else
 			validConstrCount = validConstrCount + 1
 			table.insert( constrs, constr )
 		end
+
+		ConstraintEditor.ForgetConstrs( badConstrIDs )
 
 	end
 
@@ -158,30 +135,27 @@ local function getNetConstrs( ply )
 end
 
 
+-- Different stuff is done depending on the net tag received from the client:
 local netFunctions = {
 
-	[NT.CLEAR_EDITED_ENTS] = function( ply )
+	[NT.CLEAR_ENTITY_SELECTION] = function( ply )
 		ConstraintEditor.ClearEditedEntities( ply )
 	end,
 
-	[NT.ADD_EDITED_ENTITY] = function( ply )
+	[NT.SELECT_ENTITY] = function( ply )
 		local ent = net.ReadEntity()
 		ConstraintEditor.AddEditedEntity( ent, ply, true )
 	end,
 
 	[NT.GET_DATA_FOR_EDITOR] = function( ply )
-		local constrs = getNetConstrs( ply )
-		if not constrs or next( constrs ) == nil then return end
-		ConstraintEditor.AddEditedConstrs( constrs, ply )
-	end,
 
-	--[[
-	[NT.GET_DEF_DATA_FOR_EDITOR] = function( ply )
-		local constrs = getNetConstrs( ply )
-		if not constrs or next( constrs ) == nil then return end
-		ConstraintEditor.AddEditedConstrType( constrs[1], ply )
+		local constr		= getNetConstrs( ply, 1 )[1]
+		local getDefault	= net.ReadBool()
+
+		if not constr then return end
+		ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
+
 	end,
-	]]
 
 	[NT.REMOVE_CONSTRS] = function( ply )
 		local constrs = getNetConstrs( ply )
@@ -219,8 +193,7 @@ local netFunctions = {
 		end
 	end,
 
-
-	[NT.TRANSFER_CONSTR_ENTS] = function( ply )
+	[NT.TRANSFER_CONSTRS] = function( ply )
 		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
 		local constrs	= getNetConstrs( ply )
 
@@ -234,7 +207,7 @@ local netFunctions = {
 		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
 	end,
 
-	[NT.TRANSFER_CONSTRS_ENTS] = function( ply )
+	[NT.TRANSFER_ALL_CONSTRS] = function( ply )
 		local newEnt = ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
 
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply )

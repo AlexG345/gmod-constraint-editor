@@ -1,85 +1,38 @@
 ConstraintEditor = {}
 
 
-ConstraintEditor.NetTags = {
-	CLEAR_EDITED_ENTS		= 0,
-	ADD_EDITED_ENTITY		= 1,
-	LEFT_CLICK				= 2,
-	RIGHT_CLICK				= 3,
-	RELOAD					= 4,
-	UPDATE_CONSTRS			= 5,
-	REMOVE_CONSTRS			= 6,
-	DUPLIC_CONSTRS			= 7,
-	UPDATE_TYPE				= 8,
-	CLEAR_SHOWN_CONSTRS		= 9,
-	ADD_SHOWN_CONSTRS		= 10,
-	GET_DATA_FOR_EDITOR		= 11,
-	GET_DEF_DATA_FOR_EDITOR	= 12,
-	CLEAR_EDITOR_DATA		= 13,
-	FILL_EDITOR				= 14,
-	FORGET_CONSTR			= 15,
-	TRANSFER_CONSTR_ENTS	= 16,
-	TRANSFER_CONSTRS_ENTS	= 17,
-}
+local function AddFile( dirPath, fileName )
 
+	local fileSide	= string.lower( string.Left( fileName, 3 ) )
+	local filePath	= dirPath .. fileName
 
-ConstraintEditor.NetBitCounts = {
-	TAG			= 5,
-	ENT_COUNT	= 13, -- up to 8192 entities can exist
-	CONSTR_ID	= 24, -- creation ids go up to 10 million
-}
+	local isForBoth		= fileSide == "sh_"
+	local isForServer	= isForBoth or fileSide == "sv_"
+	local isForClient	= isForBoth or fileSide == "cl_"
 
+	if ( SERVER and isForServer ) or ( CLIENT and isForClient ) then include( filePath ) end
 
-ConstraintEditor.NetWriteFuncs = {
-	[TYPE_STRING]		= net.WriteString,
-	[TYPE_NUMBER]		= net.WriteUInt,
-	[TYPE_TABLE]		= net.WriteTable,
-	[TYPE_BOOL]			= net.WriteBool,
-	[TYPE_ENTITY]		= net.WriteEntity,
-	[TYPE_VECTOR]		= net.WriteVector,
-	[TYPE_ANGLE]		= net.WriteAngle,
-	[TYPE_MATRIX]		= net.WriteMatrix,
-	[TYPE_COLOR]		= net.WriteColor,
-}
+	if SERVER and isForClient then AddCSLuaFile( filePath ) end
 
-
-function ConstraintEditor.GetNetWriteFunc( v )
-	return ConstraintEditor.NetWriteFuncs[TypeID( v )]
 end
 
 
--- Starts a net message with a tag and optional arguments.
--- Note that this does not send the message, only starts it and writes some data.
---
--- Arguments:
---	tag (int): A number from the ConstraintEditor.NetTags table. Used to describe the goal of the message and the data held by it.
---	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
---		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
---		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
-function ConstraintEditor.NetStartWrite( tag, ... )
+local function AddDir( dirPath )
 
-	if not isnumber( tag ) then return end
+	dirPath = dirPath .. "/"
+	local files, dirs = file.Find( dirPath .. "*", "LUA")
 
-	net.Start( "constraint_editor_net" )
-
-		net.WriteUInt( tag, ConstraintEditor.NetBitCounts.TAG )
-
-		for _, tab in ipairs( { ... } ) do
-			local v, arg = tab[1], tab[2]
-			local write = ConstraintEditor.GetWriteFunc( v )
-			if write then write( v, arg ) end
+	for _, fileName in ipairs( files ) do
+		if string.EndsWith( fileName, ".lua" ) then
+			AddFile( dirPath, fileName )
 		end
+	end
+
+	for _, dirName in ipairs( dirs ) do
+		AddDir( dirPath .. dirName )
+	end
 
 end
 
 
--- Put a constraint creation ID into an appropriate format for the net send functions
---
--- Arguments:
---	constrID (int): A constraint creation ID
---
--- Returns:
---	(table): A table containing constrID (arg) and its maximum bit count
-function ConstraintEditor.ToNetConstrID( constrID )
-	return { constrID, BIT_COUNT.CONSTR_ID }
-end
+AddDir( "constraint_editor" )

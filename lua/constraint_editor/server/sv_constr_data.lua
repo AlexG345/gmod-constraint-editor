@@ -18,6 +18,7 @@ include( "constraint_editor/sv_access.lua" )
 --  Basis of the system  --
 ---------------------------
 
+
 -- Find the duplicator descriptor and constraint type for the given argument
 --
 -- Argument:
@@ -190,9 +191,6 @@ end
 --
 -- Arguments:
 --	constrData (table): The constraint data to be defaultized. Must only have string keys.
---
--- Returns:
---	(nil)
 function ConstraintEditor.DefaultizeConstrData( constrData )
 	local constrType = constrData.Type
 	constrData.constrID = nil
@@ -207,9 +205,6 @@ end
 --
 -- Arguments:
 --	constrData (table): The constraint data to be sanitized. Can have numerical and/or string keys.
---
--- Returns:
---	(nil)
 function ConstraintEditor.SanitizeConstrData( constrData, ply )
 	for k, v in pairs( constrData ) do
 		local t = type( v )

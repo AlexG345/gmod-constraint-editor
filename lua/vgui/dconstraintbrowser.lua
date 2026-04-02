@@ -48,9 +48,6 @@ end
 
 -- Counts and saves how many IDs are currently selected, updates the edit mode accordingly
 --
--- Arguments:
---	(nil)
---
 -- Returns:
 --	(boolean) true only if the selection data's edit mode has changed
 function PANEL:UpdateEditMode()
@@ -119,20 +116,31 @@ function PANEL:SelectIDs( newIDs, dataType, clearSelection )
 end
 
 
-function PANEL:RemoveConstr( constrID )
+function PANEL:ForgetConstr( constrID )
 
 	self:SelectIDs(
 		{ [constrID] = false },
 		self.selectionData.dataType
 	)
 
-	self.constraintTree:RemoveConstr( constrID )
+	self.constraintTree:ForgetConstr( constrID )
 
 end
 
 
-function PANEL:AddConstrs( surfaceConstrsData )
-	self.constraintTree:AddConstrs( surfaceConstrsData )
+-- Register constraints so that they become visible and editable in the browser.
+--
+-- Arguments:
+--	surfaceConstrsData (table): Table from the server, it should look like this:
+--		{
+--			[constrType_1] = {
+--				[constrID_1] = _
+--				etc...
+--			},
+--			etc...
+--		}
+function PANEL:RegisterConstrs( surfaceConstrsData )
+	self.constraintTree:RegisterConstrs( surfaceConstrsData )
 end
 
 
@@ -141,11 +149,20 @@ function PANEL:UpdateServer()
 	local constrIDs		= self.constrIDs
 	local constrData	= self.constraintEditor:GetEditedValues()
 
-	ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( constrIDs ) )
+	ConstraintEditor.SendToServer(
+		NT.UPDATE_CONSTRS,
+		{ constrData },
+		ConstraintEditor.ToNetConstrIDs( constrIDs )
+	)
 
 	-- TODO: add back constraint type selection
-	-- ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+	-- ConstraintEditor.SendToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 
 end
 
-derma.DefineControl( "DConstraintBrowser", "", PANEL, "DPanel" )
+derma.DefineControl(
+	"DConstraintBrowser",
+	"This is from the Constraint Editor addon.",
+	PANEL,
+	"DPanel"
+)

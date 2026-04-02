@@ -637,9 +637,6 @@ end
 --	sanitize (boolean): Only if true, checks if entities inside newConstrData (arg) can be accessed by ply (arg)
 --	delete (boolean): Only if true, deletes the old constraint in case of successful creation of the new constraint
 --	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), in case of successful creation
---
--- Returns:
---	(nil)
 function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, restoreBehavior, sanitize, delete, setEdited )
 
 	local constrData, desc = ConstraintEditor.GetConstrData( constr )
@@ -675,9 +672,6 @@ end
 --	ply (Player | nil): The player who supposedly owns newConstr (arg)
 --	delete (boolean): Only if true, deletes the old constraint, and only if newConstr (arg) is valid.
 --	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), and only if newConstr (arg) is valid.
---
--- Returns:
---	(nil)
 function ConstraintEditor.ReplaceConstr( constr, newConstr, ply, delete, setEdited )
 
 	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
@@ -689,7 +683,7 @@ function ConstraintEditor.ReplaceConstr( constr, newConstr, ply, delete, setEdit
 	if not delete then return end
 
 	-- TODO: check if players other than ply are editing the constr so that editor stays open for them
-	if setEdited and ply then ConstraintEditor.AddEditedConstrs( { newConstr }, ply ) end
+	if setEdited and ply then ConstraintEditor.FillEditorWithConstr( { newConstr }, ply ) end
 
 	-- Comes after the "AddEditedConstr" to keep the node open in ply's menu in some specific cases
 	ConstraintEditor.DeleteConstr( constr )

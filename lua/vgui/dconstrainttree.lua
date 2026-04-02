@@ -42,10 +42,7 @@ end
 --
 -- Arguments:
 --	constrType (string): The constraint type to be added
---
--- Returns:
---	(nil)
-function PANEL:AddConstrType( constrType )
+function PANEL:RegisterConstrType( constrType )
 
 	local t = self.DataPerConstrType
 
@@ -116,7 +113,7 @@ function PANEL:AddConstrToNode( constrTypeNode, constrID )
 end
 
 
-function PANEL:AddConstrs( surfaceConstrsData )
+function PANEL:RegisterConstrs( surfaceConstrsData )
 
 	if not istable( surfaceConstrsData ) then return end
 
@@ -152,7 +149,7 @@ function PANEL:GetDataPerConstrType( constrType, create )
 
 	if not isstring( constrType ) then return false end
 
-	if create then self:AddConstrType( constrType ) end
+	if create then self:RegisterConstrType( constrType ) end
 
 	return self.DataPerConstrType[constrType]
 
@@ -183,7 +180,7 @@ function PANEL:DoClick( node )
 end
 
 
-function PANEL:RemoveConstr( constrID )
+function PANEL:ForgetConstr( constrID )
 
 	local constrNode, constrNodes, constrType = self:GetConstrNode( constrID )
 	if not constrNode then return end
@@ -238,7 +235,7 @@ function PANEL:SelectConstrNode( constrID, constrType )
 
 	local constrNode = self:GetConstrNode( constrID )
 	if constrType and not constrNode then
-		self:AddConstrs( { [constrType] = { constrID } } )
+		self:RegisterConstrs( { [constrType] = { constrID } } )
 		constrNode = self:GetConstrNode( constrID )
 	end
 
@@ -255,7 +252,7 @@ end
 
 derma.DefineControl(
 	"DConstraintTree",
-	"",
+	"This is from the Constraint Editor addon.",
 	PANEL,
 	"DTree"
 )

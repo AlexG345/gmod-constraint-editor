@@ -49,9 +49,9 @@ function PANEL:Init()
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
-				ConstraintEditor.SendDataToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+				ConstraintEditor.SendToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			else
-				ConstraintEditor.SendDataToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+				ConstraintEditor.SendToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 			end
 			]]
 		end
@@ -65,7 +65,7 @@ function PANEL:Init()
 		-- TODO: this is outdated
 		function ButtonDuplicate:DoClick()
 			--[[
-			ConstraintEditor.SendDataToServer( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			ConstraintEditor.SendToServer( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			]]
 		end
 
@@ -78,7 +78,7 @@ function PANEL:Init()
 		-- TODO: this is outdated
 		function ButtonDelete:DoClick()
 			--[[
-			ConstraintEditor.SendDataToServer( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+			ConstraintEditor.SendToServer( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			]]
 		end
 
@@ -157,9 +157,6 @@ end
 --		values (table): The properties' values
 --		args (table): The properties' names
 --	dest (table): Table with the same structure as source (arg)
---
--- Returns:
---	(nil)
 function PANEL:PropertiesAreSubset( subProperties, properties )
 
 	local subValues, subArgs	= subProperties.values, subProperties.args
@@ -195,9 +192,6 @@ end
 --	properties (table): Table containing:
 --		values (table): The properties' values for the rows (should use the same keys as self.rows)
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
---
--- Returns:
---	(nil)
 function PANEL:CreateRows( properties )
 
 	--local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
@@ -287,9 +281,6 @@ end
 --		values (table): The properties' values for the rows (should use the same keys as self.rows)
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
 --	setCache (boolean): true only to replace the editor's cached properties with properties (arg)
---
--- Returns:
---	(nil)
 function PANEL:SetProperties( properties, setCache )
 
 	if setCache then self.cachedProperties.type = properties.type end
@@ -319,9 +310,6 @@ end
 --	properties (table): Table containing:
 --		values (table): The properties' values for the rows
 --		args (table): The properties' names for the rows
---
--- Returns:
---	(nil)
 function PANEL:Fill( properties )
 
 	self:Clear()
@@ -353,9 +341,6 @@ end
 --	properties (table): Table containing:
 --		values (table): The properties' values for the rows (should use the same keys as self.rows)
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
---
--- Returns:
---	(nil)
 function PANEL:SafeSetProperties( properties )
 
 	if not ( properties and self.rows and self:PropertiesAreSubset( properties, self.cachedProperties ) ) then return end
@@ -391,4 +376,9 @@ function PANEL:CopyFullProperties()
 end
 
 
-derma.DefineControl( "DConstraintEditor", "", PANEL, "DPanel" )
+derma.DefineControl(
+	"DConstraintEditor",
+	"This is from the Constraint Editor addon.",
+	PANEL,
+	"DPanel"
+)
