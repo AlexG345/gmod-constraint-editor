@@ -10,9 +10,15 @@ local function AddFile( dirPath, fileName )
 	local isForServer	= isForBoth or fileSide == "sv_"
 	local isForClient	= isForBoth or fileSide == "cl_"
 
-	if ( SERVER and isForServer ) or ( CLIENT and isForClient ) then include( filePath ) end
+	if ( SERVER and isForServer ) or ( CLIENT and isForClient ) then
+		print( "include: " .. filePath )
+		include( filePath )
+	end
 
-	if SERVER and isForClient then AddCSLuaFile( filePath ) end
+	if SERVER and isForClient then
+		print( "sent  to client: " .. filePath )
+		AddCSLuaFile( filePath )
+	end
 
 end
 

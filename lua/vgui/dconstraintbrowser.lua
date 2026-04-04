@@ -7,9 +7,6 @@
 local PANEL = {}
 
 
-local EM = ConstraintEditor.EditModes
-
-
 function PANEL:Init()
 
 	self.Divider = self:Add( "DVerticalDivider" )
@@ -30,7 +27,7 @@ function PANEL:Init()
 		dataType	= "",
 		IDs			= {},
 		count		= 0,
-		mode		= EM.None
+		mode		= ConstraintEditor.EditModes.None
 	}
 
 end
@@ -55,6 +52,7 @@ function PANEL:UpdateEditMode()
 	local t = self.selectionData
 
 	local editMode = t.editMode
+	local EM = ConstraintEditor.EditModes
 
 	local count = table.Count( t.IDs )
 	t.count		= count
@@ -65,66 +63,71 @@ function PANEL:UpdateEditMode()
 end
 
 
-
 -- Prepare for a change in the selected IDs
 --
 -- Arguments:
---	newIDs (table): A table whose keys are IDs, and whose values should be boolean (true to select, false to unselect)
---	dataType (string): The "type of data" (e.g. Rope, Weld, ...)
---	clearSelection (boolean | nil): true only if you want to unselect all IDs beforehand
+--	selection (table | nil): A table whose values are the IDs that we want to add to the selection
+--	selectionDataType (string): The "type of data" (e.g. Rope, Weld, ...) of the IDs from selection (arg)
+--	elimination (table | boolean | nil): Can be:
+--		A table whose values are the IDs that we want to  remove from the selection
+--		true to clear the selection entirely
 --
 -- Returns:
 --	dataNeeded (boolean | nil): true only if the editor needs fresh data from elsewhere
 --	IDs (table | nil): The final selected IDs
 --	(int | nil): The final edit mode
-function PANEL:SelectIDs( newIDs, dataType, clearSelection )
+function PANEL:SelectIDs( selection, selectionDataType, elimination )
+
+	print("dconstraintbrowser select ids", selection, selectionDataType, elimination)
+
+	if not ( selection or elimination ) then return end
 
 	local t = self.selectionData
 
-	if clearSelection then
-		-- If we clear the current selectionn, no need to check dataType's (arg) consistency with the current one
-		self.IDs = {}
-	else
-		-- TODO: might want to move this check after since it's possible that we're going to disable all current IDs, then enable new ones for a new data type.
-		-- (though this would complicates things a lot)
-		if ( t.editMode ~= EM.NONE ) and ( dataType ~= t.dataType ) then return end
+	if elimination then
+		if istable( elimination ) then
+			for _, ID in pairs( elimination ) do t.IDs[ID] = nil end
+		else
+			t.IDs = {}
+		end
 	end
 
-	t.dataType = dataType or ""
+	if selection then
+		selectionDataType = selectionDataType or ""
 
-	local IDs = t.IDs
+		-- Update the data type if the browser's selection is empty
+		if t.editMode == ConstraintEditor.EditModes.NONE then
+			t.dataType = selectionDataType
+		end
 
-	-- Enable or disable the given IDs
-	if newIDs then
-		for newID, enabled in pairs( newIDs ) do
-			IDs[newID] = enabled or nil
+		-- Select the given IDs if the data type matches
+		if t.dataType == selectionDataType then
+			for _, ID in pairs( selection ) do t.IDs[ID] = true end
 		end
 	end
 
 	local editModeChanged = self:UpdateEditMode()
 
-	-- Clear the editor now to prevent the user from (accidentally)
-	-- sending current values meant for the old IDs to the new IDs
+	-- Clear the editor now to prevent the user from accidentally sending current
+	-- values meant for the old selection to the (vastly different) new selection
 	if editModeChanged then
 		self.constraintEditor:Clear()
 	end
 
-	local dataNeeded = modeChanged and t.editMode ~= EM.NONE
+	local dataNeeded = editModeChanged and t.editMode ~= ConstraintEditor.EditModes.NONE
 
 	return dataNeeded, IDs, t.editMode
 
 end
 
 
-function PANEL:ForgetConstr( constrID )
+function PANEL:UnregisterConstrs( constrIDs )
 
-	self:SelectIDs(
-		{ [constrID] = false },
-		self.selectionData.dataType
-	)
+	self:SelectIDs( nil, nil, constrIDs )
 
-	self.constraintTree:ForgetConstr( constrID )
-
+	for _, constrID in pairs( constrIDs ) do
+		self.constraintTree:UnregisterConstr( constrID )
+	end
 end
 
 
@@ -146,17 +149,17 @@ end
 
 function PANEL:UpdateServer()
 
-	local constrIDs		= self.constrIDs
+	local constrIDs		= self.selectionData.IDs
 	local constrData	= self.constraintEditor:GetEditedValues()
 
 	ConstraintEditor.SendToServer(
-		NT.UPDATE_CONSTRS,
+		ConstraintEditor.netTags.UPDATE_CONSTRS,
 		{ constrData },
 		ConstraintEditor.ToNetConstrIDs( constrIDs )
 	)
 
 	-- TODO: add back constraint type selection
-	-- ConstraintEditor.SendToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+	-- ConstraintEditor.SendToServer( ConstraintEditor.netTags.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 
 end
 

@@ -47,9 +47,10 @@ function PANEL:RegisterConstrType( constrType )
 	local t = self.DataPerConstrType
 
 	if not t[constrType] then t[constrType] = {} end
-	if not t.constrNodes then t.constrNodes = {} end
 
 	local data = t[constrType]
+
+	if not data.constrNodes then data.constrNodes = {} end
 
 	if not IsValid( data.panel ) then
 		data.panel = self:AddNode( constrType, data.icon or self.defaultIcon )
@@ -158,29 +159,29 @@ end
 
 function PANEL:DoClick( node )
 
-	local constrIDs = {}
+	local selection = {}
 	local constrType
-	local clearSelection = true -- TODO: add SHIFT behavior to select multiple constrs
+	local elimination = true -- TODO: add SHIFT behavior to select multiple constrs
 
 	if node.constrID then
 		constrType = node:GetParentNode().constrType
-		constrIDs = { [node.constrID] = true } -- TODO: allow unselect
+		table.insert( selection, node.constrID )
 	else
 		constrType = node.constrType
 
 		for _, childNode in pairs( node:GetChildNodes() ) do
 			if childNode.constrID then
-				constrIDs[childNode.constrID] = true
+				table.insert( selection, childNode.constrID )
 			end
 		end
 	end
 
-	ConstraintEditor.SelectConstrs( constrIDs, constrType, clearSelection )
+	ConstraintEditor.SelectConstrs( selection, constrType, elimination )
 
 end
 
 
-function PANEL:ForgetConstr( constrID )
+function PANEL:UnregisterConstr( constrID )
 
 	local constrNode, constrNodes, constrType = self:GetConstrNode( constrID )
 	if not constrNode then return end

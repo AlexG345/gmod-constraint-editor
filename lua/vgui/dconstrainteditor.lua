@@ -6,7 +6,7 @@
 local PANEL = {}
 
 
-local NT = ConstraintEditor.NetTags
+local NT = ConstraintEditor.netTags
 local EM = ConstraintEditor.EditModes
 
 ------------------------------------------------------------------------------------------------------------------
@@ -194,7 +194,7 @@ end
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
 function PANEL:CreateRows( properties )
 
-	--local rowName = self.editMode == EM.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
+	--local rowName = self.editMode == ConstraintEditor.EditModes.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
 	local rowName	= "Constraint Properties"
 	local values	= properties.values
 	local args		= properties.args

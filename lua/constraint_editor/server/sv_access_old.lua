@@ -2,17 +2,17 @@
 include( "constraint_editor/sv_net.lua" )
 
 
-local NT				= ConstraintEditor.NetTags
+local NT				= ConstraintEditor.netTags
 local TABLES_CLEANUP_CD	= 30 -- cooldown for table cleanup
 
 
 -- Keys are constraint IDs, values are tables containing:
 -- 	ent: the constraint entity,
 -- 	allowedPlayers: players who can ask server to edit the constraint
-ConstraintEditor.KnownConstrs = {}
+ConstraintEditor.constrs = {}
 
 -- Keys are players, values are entities (props)
-ConstraintEditor.EditedEnts = {}
+ConstraintEditor.editedEnts = {}
 
 -- Time since last table cleanup
 ConstraintEditor.lastTablesCleanup = CurTime()
@@ -67,12 +67,12 @@ function ConstraintEditor.ClearAccess( ply )
 
 	if not ply then return end
 
-	ConstraintEditor.EditedEnts[ply] = nil
+	ConstraintEditor.editedEnts[ply] = nil
 
-	for constrID, data in pairs( ConstraintEditor.KnownConstrs ) do
+	for constrID, data in pairs( ConstraintEditor.constrs ) do
 		local allowed = data.allowedPlayers
 		allowed[ply] = nil
-		if next( allowed ) == nil then ConstraintEditor.ForgetConstr( constrID ) end
+		if next( allowed ) == nil then ConstraintEditor.UnregisterConstr( constrID ) end
 	end
 
 end
@@ -85,20 +85,20 @@ function ConstraintEditor.SetAccess( ply, constrID, allow, ent )
 
 	if not constrID then return end
 
-	if not ConstraintEditor.KnownConstrs[constrID] then
+	if not ConstraintEditor.constrs[constrID] then
 
 		if not allow then return end
-		ConstraintEditor.KnownConstrs[constrID] = { allowedPlayers = {}, ent = ent }
+		ConstraintEditor.constrs[constrID] = { allowedPlayers = {}, ent = ent }
 
 	end
 
-	local plys = ConstraintEditor.KnownConstrs[constrID].allowedPlayers
+	local plys = ConstraintEditor.constrs[constrID].allowedPlayers
 
 	plys[ply] = allow and true or nil
 
-	if next( plys ) == nil then ConstraintEditor.ForgetConstr( constrID ) end
+	if next( plys ) == nil then ConstraintEditor.UnregisterConstr( constrID ) end
 
-	if not allow then ConstraintEditor.NetSend( NT.FORGET_CONSTRS, constrID, ply ) end
+	if not allow then ConstraintEditor.NetSend( NT.UNREGISTER_CONSTRS, constrID, ply ) end
 
 end
 
@@ -110,7 +110,7 @@ function ConstraintEditor.TransferAccess( constr, newConstr, checkLink )
 
 	local constrID = constr:GetCreationID()
 	local newConstrID = newConstr:GetCreationID()
-	local data = ConstraintEditor.KnownConstrs[constrID]
+	local data = ConstraintEditor.constrs[constrID]
 
 	if not data then return end
 
@@ -132,35 +132,35 @@ end
 
 
 -- Forgets all data related to this constrID (the associated constraint and the players editing permissions)
-function ConstraintEditor.ForgetConstr( constrID )
+function ConstraintEditor.UnregisterConstr( constrID )
 
-	local data = ConstraintEditor.KnownConstrs[constrID]
+	local data = ConstraintEditor.constrs[constrID]
 
 	if data then
 		for ply in pairs( data.allowedPlayers ) do
-			ConstraintEditor.NetSend( NT.FORGET_CONSTRS, constrID, ply )
+			ConstraintEditor.NetSend( NT.UNREGISTER_CONSTRS, constrID, ply )
 		end
 	end
 
-	ConstraintEditor.KnownConstrs[constrID] = nil
+	ConstraintEditor.constrs[constrID] = nil
 
 end
 
 
 function ConstraintEditor.GetEditedEntities( ply )
-	return ConstraintEditor.EditedEnts[ply]
+	return ConstraintEditor.editedEnts[ply]
 end
 
 
 -- Tries to give to the player edit permissions for all constraints attached to the entity
 -- Has safety checks
-function ConstraintEditor.AddEditedEntity( ent, ply )
+function ConstraintEditor.RegisterEditedEntity( ent, ply )
 
 	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end
 
-	if not ConstraintEditor.EditedEnts[ply] then ConstraintEditor.EditedEnts[ply] = {} end
+	if not ConstraintEditor.editedEnts[ply] then ConstraintEditor.editedEnts[ply] = {} end
 
-	ConstraintEditor.EditedEnts[ply][ent] = ent
+	ConstraintEditor.editedEnts[ply][ent] = ent
 
 	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
 	local tool = ply.GetTool and ply:GetTool( ConstraintEditor.Mode )
@@ -176,10 +176,10 @@ end
 
 
 -- Clears the player edited entities, handles clientside consequences
-function ConstraintEditor.ClearEditedEntities( ply )
+function ConstraintEditor.UnregisterAllEditedEntities( ply )
 
 	ConstraintEditor.ClearAccess(ply)
-	ConstraintEditor.NetSend( NT.FORGET_ALL_CONSTRS, nil, ply )
+	ConstraintEditor.NetSend( NT.UNREGISTER_ALL_CONSTRS, nil, ply )
 	local tool = ply.GetTool and ply:GetTool( ConstraintEditor.Mode )
 	if tool then tool:SetStage( 0 ) end
 
@@ -195,19 +195,19 @@ function ConstraintEditor.CleanupTables()
 
 	ConstraintEditor.lastTablesCleanup = CurTime()
 
-	for constrID, data in pairs( ConstraintEditor.KnownConstrs ) do
+	for constrID, data in pairs( ConstraintEditor.constrs ) do
 		if not data or not IsValid( data.ent ) or next( data.allowedPlayers ) == nil then
-			ConstraintEditor.ForgetConstr( constrID )
+			ConstraintEditor.UnregisterConstr( constrID )
 		end
 	end
 
-	for ply, entities in pairs( ConstraintEditor.EditedEnts ) do
+	for ply, entities in pairs( ConstraintEditor.editedEnts ) do
 		if not IsValid( ply ) then
 			ConstraintEditor.ClearAccess( ply )
 		else
 			for ent in pairs( entities ) do
 				if not IsValid( ent ) then
-					ConstraintEditor.EditedEnts[ply][ent] = nil
+					ConstraintEditor.editedEnts[ply][ent] = nil
 				end
 			end
 		end
@@ -228,7 +228,7 @@ end
 function ConstraintEditor.DeleteConstr( constr )
 	constr.CEInvalid = true
 	local constrID = constr:GetCreationID()
-	ConstraintEditor.ForgetConstr( constrID )
+	ConstraintEditor.UnregisterConstr( constrID )
 	SafeRemoveEntity( constr )
 end
 ]]

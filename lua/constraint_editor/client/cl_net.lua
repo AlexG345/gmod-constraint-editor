@@ -1,11 +1,13 @@
-local NT = ConstraintEditor.NetTags
-local BIT_COUNT = ConstraintEditor.NetBitCounts
+local NT = ConstraintEditor.netTags
+local BIT_COUNT = ConstraintEditor.netBitCounts
 
 
--- Gets the constraint editor vgui element from the main menu (tool control panel)
-local function getConstrEditor()
-	local constrBrowser = ConstraintEditor.GetConstrBrowser()
-	return constrBrowser and constrBrowser.constraintEditor
+function ConstraintEditor.SendToServer( tag, ... )
+
+	ConstraintEditor.NetStartWrite( tag, ... )
+
+	net.SendToServer()
+
 end
 
 
@@ -28,7 +30,8 @@ local function getNetConstrIDs( constrCount )
 	local bit_count	= BIT_COUNT.MAX_CREATION_ID
 
 	for i = 1, constrCount do
-		table.insert( constrIDs, net.ReadUInt( bit_count ) )
+		local constrID = net.ReadUInt( bit_count )
+		constrIDs[constrID] = constrID
 	end
 
 	return constrIDs
@@ -44,9 +47,10 @@ local netFunctions = {
 		-- If the player is pressing shift, assume that they want to edit an extra entity on top of any currently edited ones.
 		local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
 		local constrHovered, constrID, constrType = isHoveringConstr()
+		print("TOOLGUN_LEFT_CLICK, constrHovered: ", constrHovered, constrID, constrType )
 
 		if constrHovered then
-			ConstraintEditor.SelectConstrs( { [constrID] = true }, constrType, clearSelection )
+			ConstraintEditor.SelectConstrs( { constrID }, constrType, clearSelection )
 		else
 			ConstraintEditor.SelectEntity( ent, clearSelection )
 		end
@@ -56,10 +60,12 @@ local netFunctions = {
 
 		local constrHovered, constrID = isHoveringConstr()
 
+		print( ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
+
 		if constrHovered then
 			ConstraintEditor.SendToServer(
 				NT.REMOVE_CONSTRS,
-				ConstraintEditor.ToNetConstrID( constrID )
+				ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
 			)
 		else
 			ConstraintEditor.SelectEntity( nil, true )
@@ -91,9 +97,9 @@ local netFunctions = {
 
 	end,
 
-	[NT.FORGET_ALL_CONSTRS] = function()
+	[NT.UNREGISTER_ALL_CONSTRS] = function()
 
-		ConstraintEditor.Constrs = {}
+		ConstraintEditor.constrs = {}
 
 		local constrBrowser	= ConstraintEditor.GetConstrBrowser()
 
@@ -106,7 +112,7 @@ local netFunctions = {
 	[NT.FILL_CONSTR_EDITOR] = function()
 
 		local data = net.ReadTable()
-		local constrEditor = getConstrEditor()
+		local constrEditor = ConstraintEditor.GetConstrEditor()
 
 		if data and IsValid( constrEditor ) then
 			constrEditor:Fill( data )
@@ -114,13 +120,12 @@ local netFunctions = {
 
 	end,
 
-	[NT.FORGET_CONSTRS] = function()
+	[NT.UNREGISTER_CONSTRS] = function()
 
 		local constrIDs = getNetConstrIDs()
+		PrintTable( constrIDs )
 
-		for _, constrID in ipairs( constrIDs ) do
-			ConstraintEditor.ForgetConstr( constrID )
-		end
+		ConstraintEditor.UnregisterConstrs( constrIDs )
 
 	end,
 
@@ -143,3 +148,5 @@ function ConstraintEditor.HandleNetRequests()
 	end )
 
 end
+
+

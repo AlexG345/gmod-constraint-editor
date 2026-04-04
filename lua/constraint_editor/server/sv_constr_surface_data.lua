@@ -23,6 +23,71 @@
 ------------------------------------------
 
 
+-- Gets the surface constraint data associated with the given constraint
+--
+-- Arguments:
+--	constr (table | Entity): The constraint we want information about
+--
+-- Returns:
+--	(table): Surface constraint data associated with constr (arg)
+--	constrType (string): The constraint type of constr (arg)
+--	constrID (int): The creation ID of constr (arg)
+local function getSurfaceConstrData( constr )
+
+	if not constr then return end
+
+	local constrType	= constr.Type
+	local constrID		= constr.GetCreationID and constr:GetCreationID()
+
+	if constr.CEInvalid or not ( constrType and constrID and constr:IsValid() ) then return end
+
+	return {
+		constr.Ent1,
+		constr.Ent2 or constr.Ent4,
+		constr.LPos1,
+		constr.LPos2 or constr.LPos4 or constr.LPos,
+		constr.WPos2,
+		constr.WPos3,
+		constr.LocalAxis
+	}, constrType, constrID
+
+end
+
+
+-- Gets the surface constraints data associated with the given constraints table
+--
+-- Arguments:
+--	constrs (table): Table whose values are constraints
+--
+-- Returns:
+--	surfaceConstrsData (table): Surface constraints data associated with the constraints from constrs (arg)
+--	constrs (table): Table whose values are constraints from constrs (arg) and whose keys are their creation IDs
+function ConstraintEditor.GetSurfaceConstrsData( constrs )
+
+	local surfaceConstrsData = {}
+	local constrs2 = {}
+
+	for _, constr in pairs( constrs ) do
+
+		constr = constr.Constraint or NULL
+
+		local surfaceConstrData, constrType, constrID = getSurfaceConstrData( constr )
+
+		if surfaceConstrData then
+
+			if not surfaceConstrsData[constrType] then surfaceConstrsData[constrType] = {} end
+			surfaceConstrsData[constrType][constrID] = surfaceConstrData
+
+			constrs2[constrID] = constr
+
+		end
+	end
+
+	return surfaceConstrsData, constrs2
+
+end
+
+
 -- Gets the surface constraints data associated with all the constraints linked to the given entity
 --
 -- Arguments:
@@ -35,25 +100,12 @@ function ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
 	if not ( isentity( ent ) and ( ent:IsValid() or ent:IsWorld() ) ) then return false end
 
-	local surfaceConstrsData = {}
-	local constrs = {}
-	local constrTable = constraint.GetTable( ent )
-
-	for _, constrData in ipairs( constrTable ) do
-
-		local constr = constrData.Constraint or NULL
-
-		local surfaceConstrData, constrType, constrID = ConstraintEditor.GetSurfaceConstrData( constr )
-		if constrID then
-			surfaceConstrsData[constrType] = surfaceConstrsData[constrType] or {}
-			surfaceConstrsData[constrType][constrID] = surfaceConstrData[constrType][constrID]
-			constrs[constrID] = constr
-		end
-	end
-
-	return surfaceConstrsData, constrs
+	return ConstraintEditor.GetSurfaceConstrsData( constraint.GetTable( ent ) )
 
 end
+
+
+
 
 
 -- Gets the surface constraint data associated with the given constraint

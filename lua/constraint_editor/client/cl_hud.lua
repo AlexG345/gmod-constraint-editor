@@ -1,4 +1,5 @@
 ConstraintEditor.Halos = {}
+ConstraintEditor.HoveredConstrInfo = { ID = -1, Type = "" } -- for the stool
 
 
 hook.Add( "PreDrawHalos", "AddPropHalos", function()
@@ -37,6 +38,7 @@ local haloColors = {
 
 local boxCol	= Color( 0, 0, 0, 230 )
 
+
 function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	constrTypeColor = constrTypeColor or {}
@@ -54,8 +56,7 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 	ConstraintEditor.HoveredConstrInfo.Type	= ""
 
 	local constrBrowser		= ConstraintEditor.GetConstrBrowser()
-	local constrEditor		= constrBrowser and constrBrowser.constraintEditor
-	local editedConstrIDs	= constrEditor and constrEditor.constrIDs or {}
+	local editedConstrIDs	= constrBrowser and constrBrowser.selectionData.IDs or {}
 
 	local ezData		= {}
 	local textDatas		= {}
@@ -65,7 +66,7 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 	surface.SetFont( fonts[1] )
 
 
-	for constrType, constrDatas in pairs( ConstraintEditor.Constrs ) do
+	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
 
 		for constrID, constrData in pairs( constrDatas ) do
 
@@ -82,7 +83,7 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	cam.Start3D()
 
-	for constrType, constrDatas in pairs( ConstraintEditor.Constrs ) do
+	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
 
 		local constrCount = table.Count( constrDatas )
 		local constrColor = constrTypeColor[constrType] or constrTypeColor.Other or color_black
@@ -139,7 +140,6 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 	end
 
 end
-
 
 
 function extractEntAndPosData( constrType, constrData )

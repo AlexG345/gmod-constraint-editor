@@ -1,33 +1,8 @@
-include( "constraint_editor/sv_constr_data.lua" )
-include( "constraint_editor/sv_constr_maker.lua" )
-include( "constraint_editor/sv_misc.lua" )
-
-
 util.AddNetworkString( "constraint_editor_net" )
 
 
-local NT				= ConstraintEditor.NetTags
-local BIT_COUNT			= ConstraintEditor.NetBitCounts
-
---[[
-function ConstraintEditor.NetSend( tag, data, ply, ent )
-
-	if not isnumber( tag ) then return end
-	if not ( isentity( ply ) and ply:IsPlayer() ) then return end
-
-	net.Start( "constraint_editor_net" )
-		net.WriteUInt( tag, BIT_COUNT.TAG )
-		if istable( data ) then
-			net.WriteTable( data )
-		elseif isnumber( data ) then
-			net.WriteUInt( data, BIT_COUNT.MAX_CREATION_ID )
-		elseif isentity( data ) then
-			net.WriteEntity( data )
-		end
-	net.Send( ply )
-
-end
-]]
+local NT				= ConstraintEditor.netTags
+local BIT_COUNT			= ConstraintEditor.netBitCounts
 
 
 function ConstraintEditor.NetSend( tag, ply, ... )
@@ -50,7 +25,7 @@ function ConstraintEditor.NetBroadcast( tag, ... )
 end
 
 
--- Make constraints from constrs show up in ply's editor
+-- Fill ply's constraint editor using data from a constraint
 function ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 
 	if not ply then return end
@@ -79,7 +54,6 @@ function ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 	)
 
 end
-
 
 
 function ConstraintEditor.LeftClick( ent, ply )
@@ -118,7 +92,8 @@ local function getNetConstrs( ply, constrCount )
 		local constrID = net.ReadUInt( bit_count )
 
 		-- safety check
-		local constr = ConstraintEditor.AccessConstraint( ply, constrID )
+		print( "getNetConstrs(", constrCount, ") -> ", constrID )
+		local constr = ConstraintEditor.AccessConstraint( ply, ConstraintEditor.GetConstr( constrID ) )
 
 		if not IsValid( constr ) then
 			table.insert( badConstrIDs, { [constrID] = true } )
@@ -127,7 +102,7 @@ local function getNetConstrs( ply, constrCount )
 			table.insert( constrs, constr )
 		end
 
-		ConstraintEditor.ForgetConstrs( badConstrIDs )
+		ConstraintEditor.UnregisterConstrs( badConstrIDs )
 
 	end
 
@@ -139,15 +114,15 @@ end
 local netFunctions = {
 
 	[NT.CLEAR_ENTITY_SELECTION] = function( ply )
-		ConstraintEditor.ClearEditedEntities( ply )
+		ConstraintEditor.UnregisterAllEditedEntities( ply )
 	end,
 
 	[NT.SELECT_ENTITY] = function( ply )
 		local ent = net.ReadEntity()
-		ConstraintEditor.AddEditedEntity( ent, ply, true )
+		ConstraintEditor.RegisterEditedEntity( ent, ply, true )
 	end,
 
-	[NT.GET_DATA_FOR_EDITOR] = function( ply )
+	[NT.FILL_CONSTR_EDITOR] = function( ply )
 
 		local constr		= getNetConstrs( ply, 1 )[1]
 		local getDefault	= net.ReadBool()
@@ -187,7 +162,7 @@ local netFunctions = {
 		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts, constrType )
 		for _, constr in pairs( constrs ) do
 			constr = constr.Constraint
-			constr = ConstraintEditor.AccessConstraint( ply, constr:GetCreationID() )
+			constr = ConstraintEditor.AccessConstraint( ply, constr )
 			local constrData = table.Copy( newConstrData )
 			if constr then ConstraintEditor.CreateConstrFromConstr( constr, constrData, ply, true, true, true ) end
 		end

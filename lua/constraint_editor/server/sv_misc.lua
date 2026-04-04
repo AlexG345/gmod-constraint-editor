@@ -12,7 +12,7 @@ function ConstraintEditor.IsConstrLinkedToEnts( constr, entities )
 		[constr.Ent2 or constr.Ent4] = true
 	}
 
-	for ent in pairs( entities or {} ) do
+	for _, ent in pairs( entities or {} ) do
 		if constrEnts[ent] then return true end
 	end
 
@@ -33,7 +33,7 @@ function ConstraintEditor.FindConstrsLinkedToEnts( entities, constrType )
 	local constrs = {}
 	local found = {}
 
-	for ent in pairs( entities or {} ) do
+	for _, ent in pairs( entities or {} ) do
 
 		local c = constrType and constraint.FindConstraints( ent, constrType ) or constraint.GetTable( ent )
 
@@ -47,6 +47,28 @@ function ConstraintEditor.FindConstrsLinkedToEnts( entities, constrType )
 	end
 
 	return constrs
+end
+
+
+-- Finds all constraints linked to a specific entity but not to other specific entities
+function ConstraintEditor.FindConstrsNotLinkedToEnts( ent, unwantedEnts )
+
+	local constrs, unwanted = {}, {}
+
+	for _, unwantedEnt in pairs( unwantedEnts ) do
+		unwanted[unwantedEnt] = ( unwantedEnt ~= ent ) or nil
+	end
+
+	local c = constraint.GetTable( ent )
+
+	for _, constrTable in ipairs( c ) do
+
+		if not ( unwanted[constrTable.Ent1] or unwanted[constrTable.Ent2 or constrTable.Ent4] ) then
+
+			table.insert( constrs, constrTable )
+
+		end
+	end
 end
 
 

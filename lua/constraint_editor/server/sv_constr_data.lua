@@ -1,8 +1,3 @@
-
-
-include( "constraint_editor/sv_access.lua" )
-
-
 -- For a given constraint type (a string such as Weld, Axis, Hydraulic...), there exists known keys (duplicator.ConstraintType[constrType].Args).
 -- A constraint data is a table whose keys are those above, and whose values are of the proper type for these keys.
 -- This table gives a (sadly) incomplete definition of a constraint. This is what's used by the duplicator to remake constraints upon duping.

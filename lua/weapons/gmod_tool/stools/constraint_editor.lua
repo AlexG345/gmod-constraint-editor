@@ -137,7 +137,7 @@ function TOOL.BuildCPanel( cPanel )
 	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
 		cPanel:AddItem( constrBrowser )
 		constrBrowser:SetSize( 250, 650 )
-		constrBrowser:SortConstrTypes()
+		--constrBrowser.constraintTree:SortConstrTypes()
 	cPanel.constrBrowser = constrBrowser
 
 end
