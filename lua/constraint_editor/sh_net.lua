@@ -1,27 +1,49 @@
 ConstraintEditor.netTags = {
 	CLEAR_ENTITY_SELECTION	= 0,
 	SELECT_ENTITY			= 1,
-	TOOLGUN_LEFT_CLICK		= 2,
-	TOOLGUN_RIGHT_CLICK		= 3,
-	TOOLGUN_MIDDLE_CLICK	= 4,
-	UPDATE_CONSTRS			= 5,
-	REMOVE_CONSTRS			= 6,
-	DUPLIC_CONSTRS			= 7,
-	UPDATE_TYPE				= 8,
-	UNREGISTER_ALL_CONSTRS	= 9,
-	REGISTER_CONSTRS		= 10,
-	FILL_CONSTR_EDITOR		= 11,
-	CLEAR_EDITOR_DATA		= 12,
-	UNREGISTER_CONSTRS		= 13,
-	TRANSFER_CONSTRS		= 14,
-	TRANSFER_ALL_CONSTRS	= 15,
+	TOGGLE_ENTITY			= 2,
+	TOOLGUN_LEFT_CLICK		= 3,
+	TOOLGUN_RIGHT_CLICK		= 4,
+	TOOLGUN_MIDDLE_CLICK	= 5,
+	UPDATE_CONSTRS			= 6,
+	REMOVE_CONSTRS			= 7,
+	DUPLIC_CONSTRS			= 8,
+	UPDATE_TYPE				= 9,
+	UNREGISTER_ALL_CONSTRS	= 10,
+	REGISTER_CONSTRS		= 11,
+	FILL_CONSTR_EDITOR		= 12,
+	CLEAR_EDITOR_DATA		= 13,
+	UNREGISTER_CONSTRS		= 14,
+	TRANSFER_CONSTRS		= 15,
+	TRANSFER_ALL_CONSTRS	= 16,
 }
 
 
+-- Debug function to get the name of a net tag
+--
+-- Arguments:
+--	netTag (number)
+--
+-- Returns:
+--	(string): The key used to access netTag (arg) through ConstraintEditor.netTags
+function ConstraintEditor.GetNetTagName( netTag )
+	for name, tag in pairs( ConstraintEditor.netTags ) do
+		if tag == netTag then return name end
+	end
+	return "UNKNOWN"
+end
+
+
+-- Returns how many bits are needed to represent the given
+local function getBitCount( number )
+	return math.ceil( math.log( number + 1, 2 ) )
+end
+
+
 ConstraintEditor.netBitCounts = {
-	TAG				= 5,
-	MAX_ENT_ID		= 13, -- up to 8192 entities can exist
-	MAX_CREATION_ID	= 24, -- creation ids go up to 10 million
+	TAG			= getBitCount( table.Count( ConstraintEditor.netTags ) - 1 ),
+	ENT_ID		= getBitCount( 8192 ), -- up to 8192 entities can exist
+	CREATION_ID	= getBitCount( 10000000 ), -- https://wiki.facepunch.com/gmod/Entity:GetCreationID
 }
 
 
@@ -82,7 +104,7 @@ end
 -- Returns:
 --	(table): A table containing constrID (arg) and its maximum bit count
 function ConstraintEditor.ToNetConstrID( constrID )
-	return { constrID, BIT_COUNT.MAX_CREATION_ID }
+	return { constrID, BIT_COUNT.CREATION_ID }
 end
 
 
@@ -94,7 +116,7 @@ end
 --
 -- Returns:
 --	(tuple): The unpacked table of constraint IDs:
---		First table, only if addCount (arg) is true, is { how many IDs will be sent, max entity (constraint) count }
+--		First table, only if addCount (arg) is true, is { how many IDs will be sent, bits for max entity (constraint) count }
 --		Consecutive tables are { creation ID of the constraint, maximum bit count for a creation ID }
 function ConstraintEditor.ToNetConstrIDs( constrIDs, dontAddCount )
 
@@ -102,7 +124,7 @@ function ConstraintEditor.ToNetConstrIDs( constrIDs, dontAddCount )
 
 	local tab = {}
 
-	if not dontAddCount then table.insert( tab, { 0, BIT_COUNT.MAX_ENT_ID } ) end
+	if not dontAddCount then table.insert( tab, { 0, BIT_COUNT.ENT_ID } ) end
 
 	local constrCount = 0
 

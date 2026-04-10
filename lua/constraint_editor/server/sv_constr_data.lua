@@ -41,14 +41,7 @@ end
 
 
 -- Table of arbitrary default values for duplicator constraint arguments.
--- If a constraint type uses an argument whose name is shared by other constraints, but whose type is different
--- (e.g. nocollide for Weld is a boolean, while for other constraint types it's an integer), then we make an exception
--- by making a "subtable" ([constraint_type] = { [argument_name] = default_value })
 local constrArgsDefaults = {
-
-	Weld = {
-		nocollide = false
-	},
 
 	Ent1			= NULL,
 	Ent2			= NULL,
@@ -117,6 +110,13 @@ local constrArgsDefaults = {
 	LPos4			= vector_origin,
 }
 
+-- Table of arbitrary default values for duplicator constraint arguments, specific to some constraint types
+-- (e.g. nocollide for Weld is a boolean, while for other constraint types it's an integer)
+local specificConstrArgsDefaults = {
+	Weld = {
+		nocollide = false
+	},
+}
 
 -- Gets the default value for a constraint duplicator argument, optionally considering the constraint type (Rope, Weld, ...)
 --
@@ -131,8 +131,8 @@ function ConstraintEditor.GetConstrArgDefault( arg, constrType )
 	local value
 
 	if constrType then
-		local specificDefaults = constrArgsDefaults[constrType]
-		value = specificDefaults and specificDefaults[arg]
+		local t = specificConstrArgsDefaults[constrType]
+		value = t and t[arg]
 	end
 
 	if value == nil then value = constrArgsDefaults[arg] end
@@ -154,6 +154,7 @@ end
 --
 -- Returns:
 --	data (table): Its keys are constraint duplicator arguments names, its values are the arbitrary default values of these arguments, for v (arg).
+--	desc (table): v's (arg) descriptor
 function ConstraintEditor.GetConstrDataDefault( v, numerical, str )
 
 	local desc, constrType = ConstraintEditor.GetConstrDescriptor( v )
@@ -165,12 +166,12 @@ function ConstraintEditor.GetConstrDataDefault( v, numerical, str )
 	local data = { Type = constrType }
 
 	for i, arg in ipairs( desc.Args ) do
-		local value = ConstraintEditor.GetConstrArgDefault( constrType, arg )
+		local value = ConstraintEditor.GetConstrArgDefault( arg, constrType )
 		if numerical then data[i] = value end
 		if str then data[arg] = value end
 	end
 
-	return data
+	return data, desc
 
 end
 

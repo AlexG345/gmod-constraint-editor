@@ -5,13 +5,28 @@ local NT				= ConstraintEditor.netTags
 local BIT_COUNT			= ConstraintEditor.netBitCounts
 
 
-function ConstraintEditor.NetSend( tag, ply, ... )
+function ConstraintEditor.NetSend( tag, targets, ... )
 
-	if not ( istable( ply ) or isentity( ply ) and ply:IsPlayer() ) then return end
+	local t = TypeID( targets )
 
-	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
+	if not (
+		(
+			( t == TYPE_ENTITY and targets:IsPlayer() ) or
+			( t == TYPE_TABLE ) or
+			( t == TYPE_RECIPIENTFILTER )
+		) and
+		ConstraintEditor.NetStartWrite( tag, ... )
+	) then return end
 
-	net.Send( ply )
+	print( "[debug] SERVER -> CLIENT" )
+	print( "tag: ", ConstraintEditor.GetNetTagName( tag ) .. "(" .. tag .. ")" )
+	PrintTable( {
+		targets = targets,
+		args = { ... }
+	} )
+	print( "" )
+
+	net.Send( { Entity(1) } )
 
 end
 
@@ -80,10 +95,10 @@ end
 
 local function getNetConstrs( ply, constrCount )
 
-	constrCount				= constrCount or net.ReadUInt( BIT_COUNT.MAX_ENT_ID )
+	constrCount				= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
 	local validConstrCount	= 0
 	local constrs			= {}
-	local bit_count			= BIT_COUNT.MAX_CREATION_ID
+	local bit_count			= BIT_COUNT.CREATION_ID
 
 	local badConstrIDs = {}
 
@@ -102,7 +117,9 @@ local function getNetConstrs( ply, constrCount )
 			table.insert( constrs, constr )
 		end
 
-		ConstraintEditor.UnregisterConstrs( badConstrIDs )
+		if validConstrCount < constrCount then
+			ConstraintEditor.UnregisterConstrs( badConstrIDs )
+		end
 
 	end
 
@@ -120,6 +137,11 @@ local netFunctions = {
 	[NT.SELECT_ENTITY] = function( ply )
 		local ent = net.ReadEntity()
 		ConstraintEditor.RegisterEditedEntity( ent, ply, true )
+	end,
+
+	[NT.TOGGLE_ENTITY] = function( ply )
+		local ent = net.ReadEntity()
+		ConstraintEditor.ToggleEditedEntity( ent, ply )
 	end,
 
 	[NT.FILL_CONSTR_EDITOR] = function( ply )

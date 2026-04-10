@@ -6,7 +6,7 @@ local PANEL = {}
 
 function PANEL:Init()
 
-	self.DataPerConstrType = {
+	self.dataPerConstrType = {
 		Axis			= { icon = "icon16/cd.png", },
 		AdvBallsocket	= { icon = "icon16/color_wheel.png", },
 		Ballsocket		= { icon = "icon16/sport_golf.png", },
@@ -22,6 +22,8 @@ function PANEL:Init()
 		Winch			= { icon = "icon16/webcam.png", },
 		NoCollide		= { icon = "icon16/collision_off.png", },
 	}
+
+	self.constrNodes = {}
 
 	self.defaultIcon	= "icon16/cog_add.png"
 
@@ -44,13 +46,11 @@ end
 --	constrType (string): The constraint type to be added
 function PANEL:RegisterConstrType( constrType )
 
-	local t = self.DataPerConstrType
+	local t = self.dataPerConstrType
 
 	if not t[constrType] then t[constrType] = {} end
 
 	local data = t[constrType]
-
-	if not data.constrNodes then data.constrNodes = {} end
 
 	if not IsValid( data.panel ) then
 		data.panel = self:AddNode( constrType, data.icon or self.defaultIcon )
@@ -62,12 +62,18 @@ end
 
 function PANEL:ClearConstrType( constrType, data )
 
-	data = data or self:GetDataPerConstrType( constrType )
+	data = data or self:getDataPerConstrType( constrType )
 
 	if istable( data ) and data.panel then
+
+		for _, constrNode in pairs( data.panel:GetChildNodes() ) do
+			if constrNode.constrID then
+				self.constrNodes[constrNode.constrID] = nil
+			end
+		end
+
 		data.panel:Remove()
 		data.panel = nil
-		data.constrNodes = nil
 	end
 
 end
@@ -77,7 +83,7 @@ function PANEL:Clear()
 
 	self:ClearVisual()
 
-	for constrType, data in pairs( self.DataPerConstrType ) do
+	for constrType, data in pairs( self.dataPerConstrType ) do
 		self:ClearConstrType( constrType, data )
 	end
 
@@ -88,12 +94,12 @@ end
 function PANEL:SortConstrTypes()
 
 	local rootNode = self:ClearVisual()
-	local constrTypes = table.GetKeys( self.DataPerConstrType )
+	local constrTypes = table.GetKeys( self.dataPerConstrType )
 	table.sort( constrTypes )
 
 	for _, constrType in ipairs( constrTypes ) do
 
-		local data = self:GetDataPerConstrType( constrType )
+		local data = self:getDataPerConstrType( constrType )
 		local node = istable( data ) and data.panel
 
 		if node then rootNode.ChildNodes:Add( node ) end
@@ -120,18 +126,33 @@ function PANEL:RegisterConstrs( surfaceConstrsData )
 
 	for constrType, constrsData in pairs( surfaceConstrsData ) do
 
-		local data = self:GetDataPerConstrType( constrType, true )
+		local data = self:getDataPerConstrType( constrType, true )
 		local node = data.panel
 
 		for constrID, _ in pairs( constrsData ) do
-			if not data.constrNodes[constrID] then
-				data.constrNodes[constrID] = self:AddConstrToNode( node, constrID )
+			if not self.constrNodes[constrID] then
+				self.constrNodes[constrID] = self:AddConstrToNode( node, constrID )
 			end
 		end
 
 	end
 
 	self:SortConstrTypes()
+
+end
+
+
+function PANEL:UnregisterConstr( constrID )
+
+	local constrNode = self:GetConstrNode( constrID )
+	self.constrNodes[constrID] = nil
+
+	local constrTypeNode = constrNode:GetParentNode()
+	constrNode:Remove()
+
+	if constrTypeNode:GetChildNodeCount() <= 1 then
+		self:ClearConstrType( constrTypeNode.constrType )
+	end
 
 end
 
@@ -143,16 +164,16 @@ end
 --	create (boolean): true only if you want to create/complete any missing data for constrType (arg)
 --
 -- Returns:
---	data (table): A table for the constraint type, contained inside of self.DataPerConstrType:
+--	data (table): A table for the constraint type, contained inside of self.dataPerConstrType:
 --		icon (string | nil): An icon representing constrType (arg)
 --		panel (DTree_Node | nil): The node associated with constrType (arg)
-function PANEL:GetDataPerConstrType( constrType, create )
+function PANEL:getDataPerConstrType( constrType, create )
 
 	if not isstring( constrType ) then return false end
 
 	if create then self:RegisterConstrType( constrType ) end
 
-	return self.DataPerConstrType[constrType]
+	return self.dataPerConstrType[constrType]
 
 end
 
@@ -181,18 +202,9 @@ function PANEL:DoClick( node )
 end
 
 
-function PANEL:UnregisterConstr( constrID )
+function PANEL:GetConstrNode( constrID )
 
-	local constrNode, constrNodes, constrType = self:GetConstrNode( constrID )
-	if not constrNode then return end
-
-	constrNodes[constrID] = nil
-	local constrTypeNode = constrNode:GetParentNode()
-	constrNode:Remove()
-
-	if constrTypeNode:GetChildNodeCount() <= 1 then
-		self:ClearConstrType( constrType )
-	end
+	return self.constrNodes[constrID]
 
 end
 
@@ -200,21 +212,8 @@ end
 
 function PANEL:GetConstrTypeNode( constrType )
 
-	local t = self.DataPerConstrType[constrType]
+	local t = self.dataPerConstrType[constrType]
 	return t and t.panel
-
-end
-
-
-function PANEL:GetConstrNode( constrID )
-
-	for constrType, data in pairs( self.DataPerConstrType ) do
-
-		local constrNodes = data.constrNodes
-		local constrNode = constrNodes and constrNodes[constrID]
-		if constrNode then return constrNode, constrNodes, constrType end
-
-	end
 
 end
 

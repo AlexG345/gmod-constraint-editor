@@ -134,11 +134,14 @@ function TOOL.BuildCPanel( cPanel )
 		transferModeComboBox:AddChoice( "World-relative constraint positions preserved", 1 )
 		transferModeComboBox:AddChoice( "Changed entities-relative constraint positions preserved", 2 )
 
-	local constrBrowser = vgui.Create( "DConstraintBrowser", cPanel )
-		cPanel:AddItem( constrBrowser )
-		constrBrowser:SetSize( 250, 650 )
+	local p = vgui.Create( "DSizeToContents", cPanel )
+		cPanel:AddItem(p)
+		local constrBrowser = p:Add( "DConstraintBrowser" )
+			constrBrowser:SetSize( 250, 650 )
 		--constrBrowser.constraintTree:SortConstrTypes()
 	cPanel.constrBrowser = constrBrowser
+
+	cPanel:InvalidateChildren( true )
 
 end
 

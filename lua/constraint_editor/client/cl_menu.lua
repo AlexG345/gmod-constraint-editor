@@ -18,9 +18,9 @@ end
 --	constrID (int): The constraint creation ID representative of the data we want to get
 --	getDefault (boolean): true only if you want to ask for default data
 function ConstraintEditor.FillConstrEditor( constrID, getDefault )
-	ConstraintEditor.SendToServer(
+	ConstraintEditor.NetSend(
 		ConstraintEditor.netTags.FILL_CONSTR_EDITOR,
 		ConstraintEditor.ToNetConstrID( constrID ),
-		getDefault
+		{ getDefault }
 	)
 end

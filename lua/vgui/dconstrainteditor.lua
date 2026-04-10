@@ -26,10 +26,11 @@ function PANEL:Init()
 	self.Divider:Dock( FILL )
 	self.Divider:SetDividerHeight( 2 )
 
-
 	self.Properties = self.Divider:Add( "DProperties" )
 	self.Divider:SetTop( self.Properties )
 
+
+	--[[
 
 	self.DividerList = self.Divider:Add( "DHorizontalDivider" )
 	self.Divider:SetBottom( self.DividerList )
@@ -43,17 +44,14 @@ function PANEL:Init()
 		ButtonApply:SetImage( "icon16/database_refresh.png" )
 		ButtonApply:SetText( "Apply Changes" )
 
-		-- TODO: this is VERY outdated
 		function ButtonApply:DoClick()
-			--[[
 			local constrID = editor.constrID
 			local constrData = editor:GetConstrData()
 			if constrID then
-				ConstraintEditor.SendToServer( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
+				ConstraintEditor.NetSend( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 			else
-				ConstraintEditor.SendToServer( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+				ConstraintEditor.NetSend( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 			end
-			]]
 		end
 
 
@@ -62,11 +60,8 @@ function PANEL:Init()
 		ButtonDuplicate:SetImage( "icon16/application_double.png" )
 		ButtonDuplicate:SetText( "Duplicate Constraint" )
 
-		-- TODO: this is outdated
 		function ButtonDuplicate:DoClick()
-			--[[
-			ConstraintEditor.SendToServer( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
-			]]
+			ConstraintEditor.NetSend( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 		end
 
 
@@ -75,11 +70,8 @@ function PANEL:Init()
 		ButtonDelete:SetImage( "icon16/database_delete.png" )
 		ButtonDelete:SetText( "Remove Constraint" )
 
-		-- TODO: this is outdated
 		function ButtonDelete:DoClick()
-			--[[
-			ConstraintEditor.SendToServer( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
-			]]
+			ConstraintEditor.NetSend( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
 		end
 
 
@@ -107,6 +99,8 @@ function PANEL:Init()
 
 		ButtonPaste:SetEnabled( false )
 
+	]]
+
 	self.typeRestoreFuncs = {
 		boolean	= tobool,
 		number	= tonumber,
@@ -121,7 +115,7 @@ function PANEL:Init()
 
 end
 
-
+--[[
 function PANEL:PerformLayout( width, height )
 
 	local buttonHeightTotal = self.ButtonApply:GetTall() * 3
@@ -136,6 +130,7 @@ function PANEL:PerformLayout( width, height )
 	self.Divider:DoConstraints()
 
 end
+]]
 
 
 -- Gives the simplest properties possible
@@ -194,6 +189,8 @@ end
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
 function PANEL:CreateRows( properties )
 
+	PrintTable( properties )
+
 	--local rowName = self.editMode == ConstraintEditor.EditModes.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
 	local rowName	= "Constraint Properties"
 	local values	= properties.values
@@ -222,7 +219,7 @@ function PANEL:CreateRows( properties )
 
 			function row:SetValue( newValue, newValueIsProperlyTyped, setInnerValue )
 
-				if not newValueIsProperlyTyped then newValue = typeRestore( newValue ) end
+				if not newValueIsProperlyTyped then newValue = rowTypeRestoreFunc( newValue ) end
 				newString = tostring( newValue )
 
 				--print("row", v)

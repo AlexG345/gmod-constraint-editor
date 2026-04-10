@@ -11,9 +11,6 @@ ConstraintEditor.editedEnts = {}
 -- Time since the last table cleanup
 ConstraintEditor.lastTablesCleanup = CurTime()
 
--- Filter containing the players that might be editing a constraint
-ConstraintEditor.editingPlayers = RecipientFilter()
-
 
 
 
@@ -34,8 +31,12 @@ end
 -- Forgets all data related to some constraints using their creation IDs
 function ConstraintEditor.UnregisterConstrs( constrIDs )
 
-	ConstraintEditor.NetBroadcast(
-		NT.UNREGISTER_CONSTRS,
+	PrintTable( ConstraintEditor.GetEditorPlayers() )
+	PrintTable( constrIDs )
+	PrintTable( { ConstraintEditor.ToNetConstrIDs( constrIDs ) } )
+
+	ConstraintEditor.NetSend(
+		NT.UNREGISTER_CONSTRS, ConstraintEditor.GetEditorPlayers(),
 		ConstraintEditor.ToNetConstrIDs( constrIDs )
 	)
 
@@ -88,9 +89,14 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	if not ( t[ply] and t[ply][ent] ) then return end
 	t[ply][ent] = nil
 
-	local c = ConstraintEditor.FindConstrsNotLinkedToEnts( ent, ConstraintEditor.GetEditedEntities( ply ) )
+	-- unsharedConstrs: constraints linked to ent but not to other entities in the selection
+	local unsharedConstrs = ConstraintEditor.FindConstrsNotLinkedToEnts( ent, ConstraintEditor.GetEditedEntities( ply ) )
 
-	local surfaceConstrsData, constrs = ConstraintEditor.GetSurfaceConstrsData( c )
+	print("[debug] ConstraintEditor.UnregisterEditedEntity(", ent, ply, ")")
+	print("unsharedConstrs:", unsharedConstrs)
+	PrintTable( unsharedConstrs )
+
+	local surfaceConstrsData, constrs = ConstraintEditor.GetSurfaceConstrsData( unsharedConstrs )
 
 	ConstraintEditor.UnregisterConstrs( constrs )
 
@@ -105,6 +111,19 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	end
 
 end
+
+
+function ConstraintEditor.ToggleEditedEntity( ent, ply )
+
+	local t = ConstraintEditor.editedEnts
+	if t[ply] and t[ply][ent] then
+		ConstraintEditor.UnregisterEditedEntity( ent, ply )
+	else
+		ConstraintEditor.RegisterEditedEntity( ent, ply )
+	end
+
+end
+
 
 
 -- Clears the player edited entities, handles clientside consequences
@@ -127,6 +146,11 @@ function ConstraintEditor.GetEditedEntities( ply )
 end
 
 
+function ConstraintEditor.GetEditorPlayers()
+	return table.GetKeys( ConstraintEditor.editedEnts )
+end
+
+
 -- Forgets constrIDs:
 --		that have no related data
 -- 		whose associated constraint is not valid (e.g. has been removed)
@@ -135,12 +159,6 @@ end
 function ConstraintEditor.CleanupTables()
 
 	ConstraintEditor.lastTablesCleanup = CurTime()
-
-	-- TODO: check if this is useful or not (do recipient filters automatically remove invalid players?)
-	local online = RecipientFilter()
-	online:AddAllPlayers()
-	ConstraintEditor.editingPlayers:RemoveMismatchedPlayers( online )
-
 
 	local badConstrIDs = {}
 
@@ -175,14 +193,4 @@ function ConstraintEditor.TryCleanupTables()
 	if CurTime() - ( ConstraintEditor.lastTablesCleanup or 0 ) < TABLES_CLEANUP_CD then return end
 
 	ConstraintEditor.CleanupTables()
-end
-
-
--- Deletes a constraint entity and data associated to its constrID
-function ConstraintEditor.DeleteConstr( constr )
-	constr.CEInvalid = true
-	local constrID = constr:GetCreationID()
-	print( "deleting: ", constr, "[", constrID, "]")
-	ConstraintEditor.UnregisterConstrs( { [constrID] = true } )
-	SafeRemoveEntity( constr )
 end

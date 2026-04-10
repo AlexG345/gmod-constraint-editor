@@ -12,16 +12,17 @@ function PANEL:Init()
 	self.Divider = self:Add( "DVerticalDivider" )
 	self.Divider:Dock( FILL )
 	self.Divider:SetTopHeight( 240 )
-	self.Divider:SetTopMin( 100 )
-	self.Divider:SetBottomMin( 300 )
+	self.Divider:SetTopMin( 1 )
+	self.Divider:SetBottomMin( 1 )
 	self.Divider:SetDividerHeight( 5 )
 
+	local p = self.Divider:Add( "DSizeToContents" )
+	self.Divider:SetTop( p )
+	self.constraintTree = p:Add( "DConstraintTree" )
 
-	self.constraintTree = self.Divider:Add( "DConstraintTree" )
-	self.Divider:SetTop( self.constraintTree )
-
-	self.constraintEditor = self.Divider:Add( "DConstraintEditor" )
-	self.Divider:SetBottom( self.constraintEditor )
+	p = self.Divider:Add( "DSizeToContents" )
+	self.Divider:SetBottom( p )
+	self.constraintEditor = p:Add( "DConstraintEditor" )
 
 	self.selectionData = {
 		dataType	= "",
@@ -33,13 +34,19 @@ function PANEL:Init()
 end
 
 
+function PANEL:PerformLayout( width, height )
+	self.Divider:DoConstraints()
+end
+
+
 
 function PANEL:Clear()
+	self.selectionData.dataType = ""
+	self:SelectIDs( nil, nil, true )
 
 	self.constraintTree:Clear()
 
 	self.constraintEditor:Clear()
-
 end
 
 
@@ -74,7 +81,7 @@ end
 --
 -- Returns:
 --	dataNeeded (boolean | nil): true only if the editor needs fresh data from elsewhere
---	IDs (table | nil): The final selected IDs
+--	(table | nil): The final selected IDs
 --	(int | nil): The final edit mode
 function PANEL:SelectIDs( selection, selectionDataType, elimination )
 
@@ -116,8 +123,40 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 
 	local dataNeeded = editModeChanged and t.editMode ~= ConstraintEditor.EditModes.NONE
 
-	return dataNeeded, IDs, t.editMode
+	return dataNeeded, t.IDs, t.editMode
 
+end
+
+
+-- Prepare for a change in the selected IDs after toggling on/off some of them
+--
+-- Arguments:
+--	IDsToToggle (table): A table whose values are the IDs that we want to toggle
+--	selectionDataType (string): The "type of data" (e.g. Rope, Weld, ...) of the IDs from IDsToToggle (arg) that will end up being toggled on
+--	clearSelection (boolean): true to clear the selection entirely
+--
+-- Returns:
+--	dataNeeded (boolean | nil): true only if the editor needs fresh data from elsewhere
+--	(table | nil): The final selected IDs
+--	(int | nil): The final edit mode
+function PANEL:ToggleIDs( IDsToToggle, selectionDataType, clearSelection )
+
+	if clearSelection then
+		return self:SelectIDs( IDsToToggle, selectionDataType, true )
+	end
+
+	local alreadyInIDS = {
+		 [false] = {},
+		 [true] = {}
+	}
+
+	local IDs = self.selectionData.IDs
+
+	for _, constrID in pairs( IDsToToggle ) do
+		table.insert( alreadyInIDS[IDs[constrID] or false], constrID )
+	end
+
+	return self:SelectIDs( alreadyInIDS[false], selectionDataType, alreadyInIDS[true] )
 end
 
 
@@ -152,14 +191,14 @@ function PANEL:UpdateServer()
 	local constrIDs		= self.selectionData.IDs
 	local constrData	= self.constraintEditor:GetEditedValues()
 
-	ConstraintEditor.SendToServer(
+	ConstraintEditor.NetSend(
 		ConstraintEditor.netTags.UPDATE_CONSTRS,
 		{ constrData },
 		ConstraintEditor.ToNetConstrIDs( constrIDs )
 	)
 
 	-- TODO: add back constraint type selection
-	-- ConstraintEditor.SendToServer( ConstraintEditor.netTags.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+	-- ConstraintEditor.NetSend( ConstraintEditor.netTags.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 
 end
 

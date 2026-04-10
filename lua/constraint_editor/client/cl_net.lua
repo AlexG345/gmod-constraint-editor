@@ -2,9 +2,16 @@ local NT = ConstraintEditor.netTags
 local BIT_COUNT = ConstraintEditor.netBitCounts
 
 
-function ConstraintEditor.SendToServer( tag, ... )
+function ConstraintEditor.NetSend( tag, ... )
 
-	ConstraintEditor.NetStartWrite( tag, ... )
+	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
+
+	print( "[debug] CLIENT -> SERVER" )
+	print( "tag: ", ConstraintEditor.GetNetTagName( tag ) .. "(" .. tag .. ")" )
+	PrintTable( {
+		args = { ... }
+	} )
+	print( "" )
 
 	net.SendToServer()
 
@@ -25,9 +32,9 @@ end
 
 local function getNetConstrIDs( constrCount )
 
-	constrCount		= constrCount or net.ReadUInt( BIT_COUNT.MAX_ENT_ID )
+	constrCount		= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
 	local constrIDs	= {}
-	local bit_count	= BIT_COUNT.MAX_CREATION_ID
+	local bit_count	= BIT_COUNT.CREATION_ID
 
 	for i = 1, constrCount do
 		local constrID = net.ReadUInt( bit_count )
@@ -47,12 +54,11 @@ local netFunctions = {
 		-- If the player is pressing shift, assume that they want to edit an extra entity on top of any currently edited ones.
 		local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
 		local constrHovered, constrID, constrType = isHoveringConstr()
-		print("TOOLGUN_LEFT_CLICK, constrHovered: ", constrHovered, constrID, constrType )
 
 		if constrHovered then
-			ConstraintEditor.SelectConstrs( { constrID }, constrType, clearSelection )
+			ConstraintEditor.ToggleConstrs( { constrID }, constrType, clearSelection )
 		else
-			ConstraintEditor.SelectEntity( ent, clearSelection )
+			ConstraintEditor.ToggleEntity( ent, clearSelection )
 		end
 	end,
 
@@ -63,7 +69,7 @@ local netFunctions = {
 		print( ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
 
 		if constrHovered then
-			ConstraintEditor.SendToServer(
+			ConstraintEditor.NetSend(
 				NT.REMOVE_CONSTRS,
 				ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
 			)
@@ -82,20 +88,36 @@ local netFunctions = {
 
 		if constrIDs and next( constrIDs ) ~= nil then
 			-- Transfer the selected constraints of the selected entities (except ent) to ent
-			ConstraintEditor.SendToServer(
+			ConstraintEditor.NetSend(
 				NT.TRANSFER_CONSTRS,
 				ConstraintEditor.ToNetConstrIDs( constrIDs ),
 				{ ent }
 			)
 		else
 			-- Transfer all the constraints of the selected entities (except ent) to ent
-			ConstraintEditor.SendToServer(
+			ConstraintEditor.NetSend(
 				NT.TRANSFER_ALL_CONSTRS,
 				{ ent }
 			)
 		end
 
 	end,
+
+	[NT.REGISTER_CONSTRS] = function()
+		local data = net.ReadTable()
+		ConstraintEditor.RegisterConstrs( data )
+	end,
+
+	[NT.UNREGISTER_CONSTRS] = function()
+
+		local constrIDs = getNetConstrIDs()
+		print("received: unregister constrs")
+		PrintTable( constrIDs )
+
+		ConstraintEditor.UnregisterConstrs( constrIDs )
+
+	end,
+
 
 	[NT.UNREGISTER_ALL_CONSTRS] = function()
 
@@ -115,24 +137,10 @@ local netFunctions = {
 		local constrEditor = ConstraintEditor.GetConstrEditor()
 
 		if data and IsValid( constrEditor ) then
-			constrEditor:Fill( data )
+			constrEditor:Fill( { values = data[1], args = data[2] } )
 		end
 
 	end,
-
-	[NT.UNREGISTER_CONSTRS] = function()
-
-		local constrIDs = getNetConstrIDs()
-		PrintTable( constrIDs )
-
-		ConstraintEditor.UnregisterConstrs( constrIDs )
-
-	end,
-
-	[NT.REGISTER_CONSTRS] = function()
-		local data = net.ReadTable()
-		ConstraintEditor.RegisterConstrs( data )
-	end
 
 }
 
