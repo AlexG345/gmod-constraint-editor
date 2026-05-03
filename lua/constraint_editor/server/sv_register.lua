@@ -14,9 +14,18 @@ ConstraintEditor.lastTablesCleanup = CurTime()
 
 
 
----------------------
---  aaaaaaaaaaaaa  --
----------------------
+-------------------
+--  Constraints  --
+-------------------
+
+
+-- Stores a constraint by its creation ID so that it can then be quickly accessed
+--
+-- Argument:
+--	constr (Entity): The constraint  to be stored
+function ConstraintEditor.RegisterConstr( constr )
+	ConstraintEditor.constrs[constr:GetCreationID()] = constr
+end
 
 
 -- Stores constraints by their creation IDs so that they can then be quickly accessed
@@ -59,7 +68,14 @@ function ConstraintEditor.GetConstr( constrID )
 end
 
 
--- Tries to let the player edit of the constraints that are linked to the entity
+
+
+-----------------------
+--  Edited Entities  --
+-----------------------
+
+
+-- Tries to let the player edit the constraints that are linked to the entity
 function ConstraintEditor.RegisterEditedEntity( ent, ply )
 
 	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end

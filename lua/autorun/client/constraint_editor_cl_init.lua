@@ -12,14 +12,3 @@ function ConstraintEditor.GetTestTable( constrID )
 	}
 end
 ]]
-
-
-
-
-
-
-
-
-
-
-

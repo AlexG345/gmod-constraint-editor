@@ -6,9 +6,6 @@
 local PANEL = {}
 
 
-local NT = ConstraintEditor.netTags
-local EM = ConstraintEditor.EditModes
-
 ------------------------------------------------------------------------------------------------------------------
 -- TODO-NEXT:	Move "server" action buttons to the constraint browser??										--
 --				.	The constraint tree would let you select constraints: it should just be a 'visualizer'.		--
@@ -22,84 +19,70 @@ function PANEL:Init()
 
 	local editor = self
 
-	self.Divider = self:Add( "DVerticalDivider" )
-	self.Divider:Dock( FILL )
-	self.Divider:SetDividerHeight( 2 )
+	self.vDivider = self:Add( "DVerticalDivider" )
+	self.vDivider:Dock( FILL )
+	self.vDivider:SetDividerHeight( 5 )
 
-	self.Properties = self.Divider:Add( "DProperties" )
-	self.Divider:SetTop( self.Properties )
+	self.vDivider:SetTopMin( 300 )
 
+		self.Properties = self.vDivider:Add( "DProperties" )
+		self.vDivider:SetTop( self.Properties )
 
-	--[[
+		local tileLayout	= self.vDivider:Add( "DTileLayout" )
+		self.tileLayout	= tileLayout
+		self.vDivider:SetBottom( tileLayout )
+		local buttonWidth = 120
+		local buttonHeight = 24
 
-	self.DividerList = self.Divider:Add( "DHorizontalDivider" )
-	self.Divider:SetBottom( self.DividerList )
-	self.DividerList:SetDividerWidth( 1 )
+			local buttonCopyAll = self.tileLayout:Add( "DButton" )
+			self.buttonCopyAll = buttonCopyAll
+			buttonCopyAll:SetImage( "icon16/page_white_copy.png" )
+			buttonCopyAll:SetText( "Copy all values" )
+			buttonCopyAll:SetSize( buttonWidth, buttonHeight )
 
-	self.ListButtons1 = self.DividerList:Add( "DListLayout" )
-	self.DividerList:SetLeft( self.ListButtons1 )
-
-		local ButtonApply = self.ListButtons1:Add( "DButton" )
-		self.ButtonApply = ButtonApply
-		ButtonApply:SetImage( "icon16/database_refresh.png" )
-		ButtonApply:SetText( "Apply Changes" )
-
-		function ButtonApply:DoClick()
-			local constrID = editor.constrID
-			local constrData = editor:GetConstrData()
-			if constrID then
-				ConstraintEditor.NetSend( NT.UPDATE_CONSTRS, { constrData }, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
-			else
-				ConstraintEditor.NetSend( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+			function buttonCopyAll:DoClick()
+				editor:CopyProperties( editor.editedProperties, editor.cachedProperties )
+				editor.buttonPaste:SetEnabled( editor:CanPaste() )
 			end
-		end
 
+			local buttonCopyEdited = self.tileLayout:Add( "DButton" )
+			self.buttonCopyEdited = buttonCopyEdited
+			buttonCopyEdited:SetImage( "icon16/page_copy.png" )
+			buttonCopyEdited:SetText( "Copy edited values" )
+			buttonCopyEdited:SetSize( buttonWidth, buttonHeight )
 
-		local ButtonDuplicate = self.ListButtons1:Add( "DButton" )
-		self.ButtonDuplicate = ButtonDuplicate
-		ButtonDuplicate:SetImage( "icon16/application_double.png" )
-		ButtonDuplicate:SetText( "Duplicate Constraint" )
+			function buttonCopyEdited:DoClick()
+				editor:CopyProperties( editor.editedProperties )
+				editor.buttonPaste:SetEnabled( editor:CanPaste() )
+			end
 
-		function ButtonDuplicate:DoClick()
-			ConstraintEditor.NetSend( NT.DUPLIC_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
-		end
+			local buttonPaste = self.tileLayout:Add( "DButton" )
+			self.buttonPaste = buttonPaste
+			buttonPaste:SetImage( "icon16/page_paste.png" )
+			buttonPaste:SetText( "Paste" )
+			buttonPaste:SetSize( buttonWidth, buttonHeight )
 
+			function buttonPaste:DoClick()
+				editor:SafeSetProperties( editor.copiedProperties )
+			end
 
-		local ButtonDelete = self.ListButtons1:Add( "DButton" )
-		self.ButtonDelete = ButtonDelete
-		ButtonDelete:SetImage( "icon16/database_delete.png" )
-		ButtonDelete:SetText( "Remove Constraint" )
+			buttonPaste:SetEnabled( false )
 
-		function ButtonDelete:DoClick()
-			ConstraintEditor.NetSend( NT.REMOVE_CONSTRS, ConstraintEditor.ToNetConstrIDs( editor.constrIDs ) )
-		end
+			local buttonCache = self.tileLayout:Add( "DButton" )
+			self.buttonCache = buttonCache
+			buttonCache:SetImage( "icon16/page_refresh.png" )
+			buttonCache:SetText( "Reset to cache" )
+			buttonCache:SetSize( buttonWidth, buttonHeight )
 
+			function buttonCache:DoClick()
+				local b = editor.cacheComparing
+				editor:EnableCacheComparing( true )
+				editor:SafeSetProperties( editor.cachedProperties )
+				editor:EnableCacheComparing( b )
+			end
 
-	self.ListButtons2 = self.DividerList:Add( "DListLayout" )
-	self.DividerList:SetRight( self.ListButtons2 )
+		tileLayout:SetBaseSize( buttonHeight )
 
-		local ButtonCopy = self.ListButtons2:Add( "DButton" )
-		self.ButtonCopy = ButtonCopy
-		ButtonCopy:SetImage( "icon16/page_copy.png" )
-		ButtonCopy:SetText( "Copy all values" )
-
-		function ButtonCopy:DoClick()
-			editor:CopyFullProperties()
-			editor.ButtonPaste:SetEnabled( editor:CanPaste() )
-		end
-
-		local ButtonPaste = self.ListButtons2:Add( "DButton" )
-		self.ButtonPaste = ButtonPaste
-		ButtonPaste:SetImage( "icon16/page_paste.png" )
-		ButtonPaste:SetText( "Paste all values" )
-
-		function ButtonPaste:DoClick()
-			editor:SafeSetProperties( editor.copiedProperties )
-		end
-
-		ButtonPaste:SetEnabled( false )
-
-	]]
 
 	self.typeRestoreFuncs = {
 		boolean	= tobool,
@@ -110,27 +93,34 @@ function PANEL:Init()
 		color	= string.ToColor,
 	}
 
+	self.vDivider:SetBottomMin( buttonHeight * #self.tileLayout:GetChildren() )
+	self:SetTall( self.vDivider:GetTopMin() + self.vDivider:GetBottomMin() )
+
 	self.copiedProperties = self:GetEmptyProperties()
 	self:Clear()
 
+	self:EnableCacheComparing( true )
+
 end
 
---[[
+
 function PANEL:PerformLayout( width, height )
 
-	local buttonHeightTotal = self.ButtonApply:GetTall() * 3
-	self.Divider:SetBottomMin( buttonHeightTotal )
-	self.Divider:SetTopMin( height - buttonHeightTotal )
-
-	local leftWidth = width / 2
-
-	self.DividerList:SetLeftMin( leftWidth )
-	self.DividerList:SetRightMin( width - leftWidth )
-
-	self.Divider:DoConstraints()
+	self.vDivider:DoConstraints()
+	self.vDivider:SetTopMin(100)
 
 end
-]]
+
+
+-- Enable or disable cache comparing. If cache comparing is enabled, values
+-- that are the same as the cache are never considered edited, otherwise they
+-- are if they've been set one way or another (e.g. by pasting, typing, ...).
+--
+-- Arguments:
+--	enable (boolean): True to enable cache comparing
+function PANEL:EnableCacheComparing( enable )
+	self.cacheComparing = enable
+end
 
 
 -- Gives the simplest properties possible
@@ -157,8 +147,8 @@ function PANEL:PropertiesAreSubset( subProperties, properties )
 	local subValues, subArgs	= subProperties.values, subProperties.args
 	local values, args			= properties.values, properties.args
 
-	for i, v in pairs( subValues ) do
-		if type( subValues[i] ) ~= type( values[i] ) or subArgs[i] ~= args[i] then
+	for i, subValue in pairs( subValues ) do
+		if ( type( subValue ) ~= type( values[i] ) ) or ( subArgs[i] ~= args[i] ) then
 			return false
 		end
 	end
@@ -176,6 +166,7 @@ function PANEL:Clear()
 
 	self.cachedProperties = self:GetEmptyProperties()
 	self.editedProperties = self:GetEmptyProperties()
+	self.tileLayout:SetVisible( false )
 
 end
 
@@ -189,20 +180,31 @@ end
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
 function PANEL:CreateRows( properties )
 
-	PrintTable( properties )
-
 	--local rowName = self.editMode == ConstraintEditor.EditModes.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
 	local rowName	= "Constraint Properties"
 	local values	= properties.values
 	local args		= properties.args
+
+	if next( args ) ~= nil then
+		self.tileLayout:SetVisible( true )
+	end
+
+	--local colGreen	= Color( 140, 220, 100, 100 )
+	--local colGreen	= Color( 200, 120, 60, 255 )
+	local h, s, v	= ColorToHSV( self:GetSkin().Colours.Properties.Column_Selected )
+	h = h - 70
+	v = v - 0.15
+	s = s + 0.5
+
+	local col = HSVToColor( h, s, v )
+	col.a = 150
+
 
 	for i, arg in ipairs( args ) do
 
 		local rowValue	= values[i]
 		local rowType	= IsColor( rowValue ) and "color" or type( rowValue )
 		local rowTypeRestoreFunc = self.typeRestoreFuncs[rowType]
-
-		--print(i,arg,value,rowType)
 
 		local editor = self
 
@@ -214,24 +216,30 @@ function PANEL:CreateRows( properties )
 
 			function row:DataChanged( v ) self:SetValue( v ) end
 
-			--local r, g, b, a = (row:GetSkin().Colours.Properties.Column_Selected or Color(255, 0, 0, 100)):Unpack()
-			local r, g, b, a = 140, 220, 100, 100
-
 			function row:SetValue( newValue, newValueIsProperlyTyped, setInnerValue )
 
 				if not newValueIsProperlyTyped then newValue = rowTypeRestoreFunc( newValue ) end
 				newString = tostring( newValue )
 
-				--print("row", v)
 				if setInnerValue then row.Inner:SetValue( newString ) end
 
 				-- Better to check for the string instead of the actual value because users input a string...
-				local changed = tostring( editor.cachedProperties.values[i] ~= newString )
+				local edited = ( not editor.cacheComparing ) or ( tostring( editor.cachedProperties.values[i] ) ~= newString )
 
-				self:SetBGColor( r, g, b, a )
-				self:SetPaintBackgroundEnabled( changed )
+				print( arg, "edited: ", edited)
 
-				editor.editedProperties.values[i] = ( changed or nil ) and v
+				local panel = self.Inner
+
+				self:SetPaintBackgroundEnabled( edited )
+
+				if edited then
+					-- can be overriden by other stuff otherwise (check wiki pages for these two functions)
+					self:SetBGColor( col )
+					--self.Label:SetTextColor( color_black )
+				end
+
+				editor.editedProperties.values[i]	= ( edited or nil ) and newValue
+				editor.editedProperties.args[i]		= ( edited or nil ) and arg
 
 			end
 
@@ -249,8 +257,8 @@ function PANEL:CreateRows( properties )
 
 					buttonSwitch:DockMargin(0, 1, 1, 1)
 					buttonSwitch:Dock(RIGHT)
-					local s = row:GetTall()
-					buttonSwitch:SetSize( 2 * s, s )
+					local height = row:GetTall()
+					buttonSwitch:SetSize( 2 * height, height )
 
 					function buttonSwitch:DoClick()
 						row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
@@ -266,7 +274,7 @@ function PANEL:CreateRows( properties )
 
 	end
 
-	self.ButtonPaste:SetEnabled( self:CanPaste() )
+	self.buttonPaste:SetEnabled( self:CanPaste() )
 
 end
 
@@ -282,21 +290,24 @@ function PANEL:SetProperties( properties, setCache )
 
 	if setCache then self.cachedProperties.type = properties.type end
 
-	local values = properties.values
-	local cachedValues = self.cachedProperties.values
+	local cachedValues	= self.cachedProperties.values
+	local cachedArgs	= self.cachedProperties.args
 
-	for i, value in pairs( values ) do
+	for i, value in pairs( properties.values ) do
 
 		local row = self.rows[i]
 		if not row then continue end
 
-		if setCache then cachedValues[i] = value end
+		if setCache then
+			cachedValues[i]	= value
+			cachedArgs[i]	= properties.args[i]
+		end
 
 		row:SetValue( value, true, true )
 
 	end
 
-	self.ButtonPaste:SetEnabled( self:CanPaste() )
+	self.buttonPaste:SetEnabled( self:CanPaste() )
 
 end
 
@@ -313,7 +324,12 @@ function PANEL:Fill( properties )
 
 	self:CreateRows( properties )
 
+	local b = self.cacheComparing
+	self:EnableCacheComparing( true )
+
 	self:SetProperties( properties, true )
+
+	self:EnableCacheComparing( b )
 
 	--[[ TODO: add this back
 	if constrType then
@@ -362,13 +378,27 @@ function PANEL:CanPaste()
 end
 
 
-function PANEL:CopyFullProperties()
+function PANEL:CopyProperties( priorityProp, modelProp )
 
-	-- Copy all cached properties
-	table.CopyFromTo( self.cachedProperties, self.copiedProperties )
+	-- this is bad but it works
+	modelProp = modelProp or priorityProp
 
-	-- Override with edited properties
-	table.Merge( self.copiedProperties, self.editedProperties )
+	self.copiedProperties = self:GetEmptyProperties()
+
+	local priorityVals	= priorityProp.values
+	local modelVals		= modelProp.values
+
+	local copiedArgs, copiedVals = self.copiedProperties.args, self.copiedProperties.values
+
+	for i, arg in pairs( modelProp.args ) do
+
+		local v = priorityVals[i]
+		if v == nil then v = modelVals[i] end
+
+		copiedArgs[i] = arg
+		copiedVals[i] = v
+
+	end
 
 end
 

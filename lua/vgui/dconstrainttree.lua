@@ -23,6 +23,14 @@ function PANEL:Init()
 		NoCollide		= { icon = "icon16/collision_off.png", },
 	}
 
+	local h, s, v	= ColorToHSV( self:GetSkin().Colours.Properties.Column_Selected )
+	h = h - 70
+	v = v - 0.15
+	s = s + 0.5
+
+	self.selectColor = HSVToColor( h, s, v )
+	self.selectColor.a = 150
+
 	self.constrNodes = {}
 
 	self.defaultIcon	= "icon16/cog_add.png"
@@ -115,6 +123,14 @@ function PANEL:AddConstrToNode( constrTypeNode, constrID )
 
 	local node = constrTypeNode:AddNode( ( "[%s]" ):format( constrID ), "icon16/application_view_columns.png" )
 	node.constrID = constrID
+
+	function node:ApplySchemeSettings()
+		local c = node:GetBackgroundColor()
+		if c then
+			node:SetBGColor( c )
+		end
+	end
+
 	return node
 
 end
@@ -146,6 +162,8 @@ function PANEL:UnregisterConstr( constrID )
 
 	local constrNode = self:GetConstrNode( constrID )
 	self.constrNodes[constrID] = nil
+
+	if not constrNode then return end
 
 	local constrTypeNode = constrNode:GetParentNode()
 	constrNode:Remove()
@@ -182,11 +200,12 @@ function PANEL:DoClick( node )
 
 	local selection = {}
 	local constrType
-	local elimination = true -- TODO: add SHIFT behavior to select multiple constrs
+	local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
 
 	if node.constrID then
 		constrType = node:GetParentNode().constrType
 		table.insert( selection, node.constrID )
+		node:SetSelected( false )
 	else
 		constrType = node.constrType
 
@@ -197,7 +216,8 @@ function PANEL:DoClick( node )
 		end
 	end
 
-	ConstraintEditor.SelectConstrs( selection, constrType, elimination )
+	ConstraintEditor.ToggleConstrs( selection, constrType, clearSelection )
+
 
 end
 
@@ -209,7 +229,6 @@ function PANEL:GetConstrNode( constrID )
 end
 
 
-
 function PANEL:GetConstrTypeNode( constrType )
 
 	local t = self.dataPerConstrType[constrType]
@@ -218,32 +237,16 @@ function PANEL:GetConstrTypeNode( constrType )
 end
 
 
-function PANEL:SelectTypeNode( constrType )
-
-	local constrTypeNode = self:GetConstrTypeNode( constrType )
-	if not constrTypeNode then return end
-
-	--constrTypeNode:ExpandTo( true )
-
-	self:SetSelectedItem( constrTypeNode )
-
-end
-
-
--- adding constrType lets you force the browser to add a constraint node
-function PANEL:SelectConstrNode( constrID, constrType )
+function PANEL:VisualSelectConstrNode( constrID, enable )
 
 	local constrNode = self:GetConstrNode( constrID )
-	if constrType and not constrNode then
-		self:RegisterConstrs( { [constrType] = { constrID } } )
-		constrNode = self:GetConstrNode( constrID )
+
+	if constrNode then
+		constrNode:SetPaintBackgroundEnabled( enable )
+		constrNode:SetBGColor( self.selectColor )
+		constrNode:SetBackgroundColor( enable and self.selectColor or nil )
+		if enable then constrNode:ExpandTo( true ) end
 	end
-
-	if not constrNode then return end
-
-	constrNode:ExpandTo( true )
-
-	self:SetSelectedItem( constrNode )
 
 end
 

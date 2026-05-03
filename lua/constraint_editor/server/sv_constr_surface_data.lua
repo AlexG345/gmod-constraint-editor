@@ -69,7 +69,7 @@ function ConstraintEditor.GetSurfaceConstrsData( constrs )
 
 	for _, constr in pairs( constrs ) do
 
-		constr = constr.Constraint or NULL
+		if istable( constr ) then constr = constr.Constraint end
 
 		local surfaceConstrData, constrType, constrID = getSurfaceConstrData( constr )
 

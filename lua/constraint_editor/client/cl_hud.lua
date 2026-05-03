@@ -14,7 +14,7 @@ end )
 local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover
 
 
-local beamColors = {
+local beamColorsWeighted = {
 	{
 		start	= HSVToColor( 0, 0.9, 1 ), -- red
 		final	= HSVToColor( 210, 0.9, 1 ) -- blue
@@ -25,7 +25,7 @@ local beamColors = {
 	}
 }
 
-local haloColors = {
+local haloColorsWeighted = {
 	{
 		HSVToColor( 17, 0.5, 1 ), -- red (ent1)
 		HSVToColor( 200, 0.5, 1 ) -- blue (ent2)
@@ -39,10 +39,22 @@ local haloColors = {
 local boxCol	= Color( 0, 0, 0, 230 )
 
 
-function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
+-- NoCollide is unlisted
+--local constrTypes = { "Axis", "AdvBallsocket", "Ballsocket", "Elastic", "Hydraulic", "Keepupright", "Motor", "Muscle", "Pulley", "Rope", "Slider", "Weld", "Winch", "NoCollide", "Other" }
+local constrTypes = { "Weld", "Keepupright", "Rope", "Muscle", "Hydraulic", "Winch", "Elastic", "Motor", "Axis", "Ballsocket", "AdvBallsocket", "Slider", "Other" }
+local hueStep = 360 / #constrTypes
 
-	constrTypeColor = constrTypeColor or {}
+constrTypeColor = { NoCollide = HSVToColor( 0, 0, 0.5) }
+for i, constrType in ipairs( constrTypes ) do
+	constrTypeColor[constrType] = HSVToColor( ( - 0 + ( i - 1 ) * hueStep ) % 360, 0.55, 0.95 )
+end
 
+
+
+
+function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin )
+
+	-- These are ordered from smaller to bigger
 	local fonts = {
 		"DefaultSmall", --"DermaDefault",
 		"DermaDefaultBold",
@@ -59,7 +71,7 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 	local editedConstrIDs	= constrBrowser and constrBrowser.selectionData.IDs or {}
 
 	local ezData		= {}
-	local textDatas		= {}
+	local textDatas		= showText and {}
 	local overlaps		= {}
 	table.Empty( ConstraintEditor.Halos )
 
@@ -76,10 +88,10 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 
 	end
 
-
-	-- sort the texts by depth then find hovered constraint text
-	depthSortFindHover( ezData, textDatas )
-
+	-- Sort the texts by depth then find hovered constraint text
+	if showText then
+		depthSortFindHover( ezData, textDatas )
+	end
 
 	cam.Start3D()
 
@@ -94,41 +106,69 @@ function ConstraintEditor.DrawHUD( showText, beamWidthMin, constrTypeColor )
 			if not data then continue end
 			local ents, positions, weight = data.ents, data.positions, data.weight
 
-			local beamWidth = weight * math.Clamp( 2 - 0.1 * constrCount, beamWidthMin, 100 )
+			local colIndex		= math.min( weight - 1, 2 )
 
-			local beamColDuo	= beamColors[math.min( weight - 1, 2 )]
-			local beamColStart	= beamColDuo and beamColDuo.start or constrColor
-			local beamColEnd	= beamColDuo and beamColDuo.final or constrColor
+			if showBeams then
 
-			local vertexCount = #positions
+				local vertexCount	= #positions
+				local segmentCount 	= vertexCount - 1
 
-			render.OverrideDepthEnable( weight > 2, true )
+				local beamWidth = weight * math.Clamp( 2 - 0.1 * constrCount, beamWidthMin, 100 )
 
-			render.SetColorMaterial()
-			render.StartBeam( vertexCount )
-			for i, pos in ipairs( positions ) do
-				local t = ( i - 1 ) / ( vertexCount - 1 )
-				render.AddBeam( pos, beamWidth * ( 1 - t * 0.75 ), 0, beamColStart:Lerp( beamColEnd, t ) )
+				local beamCols		= beamColorsWeighted[colIndex]
+				local beamColStart	= beamCols and beamCols.start or constrColor
+				local beamColEnd	= beamCols and beamCols.final or constrColor
+
+				render.OverrideDepthEnable( weight > 2, true )
+				render.SetColorMaterial()
+
+				render.StartBeam( vertexCount )
+
+				for i, pos in ipairs( positions ) do
+
+					-- ( i - 1 ) is the number of segments already drawn
+					local drawCompletion = ( i - 1 ) / segmentCount
+
+					render.AddBeam(
+						pos,
+						beamWidth * ( 1 - drawCompletion * 0.75 ),
+						0,
+						beamColStart:Lerp( beamColEnd, drawCompletion )
+					)
+
+				end
+
+				render.EndBeam()
+
+				render.OverrideDepthEnable( false)
+
 			end
-			render.EndBeam()
 
-			render.OverrideDepthEnable( false)
+			-- Draw halos
+			if showHalos and weight > 1 then
 
-			if weight <= 1 then continue end
+				local halos		= ConstraintEditor.Halos
+				local haloCols	= haloColorsWeighted[colIndex]
 
-			for i, ent in ipairs( ents ) do
-				local col = haloColors[math.min( weight - 1, 2 )][i]:Copy() -- >= 3 when edited
-				col.a = 180 + weight * 40
-				local ceHalos = ConstraintEditor.Halos
-				if not ceHalos[col] then ceHalos[col] = {} end
-				table.insert( ceHalos[col], ent )
+				for i, ent in ipairs( ents ) do
+
+					local col = haloCols[i]
+
+					if not halos[col] then halos[col] = {} end
+
+					halos[col][ent] = ent -- avoid duplicates by using ent as key
+
+				end
+
 			end
+
 		end
 
 	end
 
-	if not showText then return end
 	cam.End3D()
+
+	if not showText then return end
 
 	for i, textData in pairs( textDatas ) do
 
@@ -178,6 +218,8 @@ function prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, con
 		positions	= positions,
 		weight		= weight
 	}
+
+	if not textDatas then return end
 
 	local str		= constrType .. ( " [" .. constrID or "?" ) .. "]"
 	local midIndex	= math.floor( #positions / 2 )

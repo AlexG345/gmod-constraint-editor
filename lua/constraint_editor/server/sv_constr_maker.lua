@@ -9,6 +9,9 @@
 -- 	e.g. constraint.Weld (https://wiki.facepunch.com/gmod/constraint.Weld)
 
 
+local NT = ConstraintEditor.netTags
+
+
 ----------------------
 --  Simple helpers  --
 ----------------------
@@ -459,7 +462,7 @@ local function changeConstrEnts( entChange, constr, ply, delete )
 
 	end
 
-	if update then ConstraintEditor.CreateConstrFromConstr( constr, constrData, ply, true, true, delete ) end
+	if update then ConstraintEditor.CreateConstrsFromConstrs( { constr }, constrData, ply, true, true, delete ) end
 
 	return constrData
 
@@ -515,20 +518,18 @@ local function createConstrBlindly( factory, constrData, ply, constrType )
 	local ok, constr, rope = pcall( factory, unpack( constrData, 1, #constrData ) )
 	-- print( ok, constr, rope, "error:", ply and not (ok and constr), "type:", constrType)
 	if ply and not ( ok and constr ) then
-		-- PrintTable( constrData )
 		ply:ChatPrint( "Constraint Editor - ERROR: Failed to create " .. constrType or "unknown type" .. " constraint properly!" )
 	end
 	return constr, rope
 end
 
 
--- Based on Advanced Duplicator 2 CreateConstraintFromTable function
--- Credits: Advanced Duplicator 2 team (https://github.com/wiremod/advdupe2)
+-- Credits: based on Advanced Duplicator 2 (https://github.com/wiremod/advdupe2) CreateConstraintFromTable function
 --
 -- Arguments:
 --	constrType (string): The (very optional) constraint type
 --	constrData (table): Constraint data that must use string keys
---	BuildDupeInfo (table | nil): Table (created by advanced duplicator 2) to restore relative positions and angles
+--	BuildDupeInfo (table | nil): Table (created by Advanced Duplicator 2) to restore relative positions and angles
 --	duplicatorFunc (function): The function to be called to create the constraint
 --	ply (Player): The player who caused this function call
 --
@@ -541,7 +542,7 @@ local function createConstrAccurate( constrType, constrData, BuildDupeInfo, dupl
 
 	local data = applyBuildDupeInfo( BuildDupeInfo, constrData )
 
-	ConstraintEditor.TransformConstrDataKeys( constrData, nil, true ) -- use numerical
+	ConstraintEditor.TransformConstrDataKeys( constrData, nil, true ) -- use numerical keys
 	local constr, rope = createConstrBlindly( duplicatorFunc, constrData, ply, constrType )
 
 	if constr and BuildDupeInfo then constr.BuildDupeInfo = table.Copy( BuildDupeInfo ) end
@@ -597,6 +598,8 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 	---------- WIRE HYDRAULICS (S) ----------
 	-- We now need to link the newly created wire hydraulic to the hydraulic controller if it exists.
 	if IsValid( wireController ) and wireController:GetClass() == "gmod_wire_hydraulic" then
+
+		-- Unlink the old constraints and the hydraulic controller
 		for _, ent in ipairs( { wireController.constraint, wireController.rope } ) do
 			if isentity( ent ) then
 				ent.MyCrtl = -1 -- if set to nil it's uneditable afterwards
@@ -605,6 +608,7 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 			end
 		end
 
+		-- Link the new constraints to the hydraulic controller
 		wireController:SetConstraint( newConstr, rope )
 		for _, ent in ipairs( { newConstr, rope } ) do
 			if isentity( ent ) then wireController:DeleteOnRemove( ent ) end -- check if entity exists since rope does not exist if constr width is 0
@@ -619,40 +623,55 @@ function ConstraintEditor.CreateConstr( constrData, BuildDupeInfo, duplicatorFun
 end
 
 
--- Creates a new constraint by using an existing constraint and some "new" constraint data
--- Also does safety checks for the given constraint data, can delete the old constraint, can update players permissions and menu...
+-- Creates a new constraint by using an existing constraint and some given constraint data
+-- What if the existing constraint had been created using different values? That's part of what this function tries to do.
+-- Does safety checks for the given constraint data, can optionally delete the old constraint, update players menu...
 
 -- Arguments:
 --	constr (table | Entity): The existing constraint the new one will be based on
 --	newConstrData (table): Constraint data for the new constraint
 --	ply (Player): The player who's trying to create the new constraint
---	restoreBehavior (boolean): Only if true, tries to restore the constraint behavior from any linked entity/entities change(s).
+--	restoreBehavior (boolean): Only if true, tries to restore the constraint behavior despite any linked entity/entities change(s).
 --	sanitize (boolean): Only if true, checks if entities inside newConstrData (arg) can be accessed by ply (arg)
 --	delete (boolean): Only if true, deletes the old constraint in case of successful creation of the new constraint
---	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), in case of successful creation
-function ConstraintEditor.CreateConstrFromConstr( constr, newConstrData, ply, restoreBehavior, sanitize, delete, setEdited )
+--	setEdited (boolean): Only if true, makes ply (arg) edit the new constraint in case of its successful creation
+function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply, restoreBehavior, sanitize, delete, setEdited )
 
-	local constrData, desc = ConstraintEditor.GetConstrData( constr )
-
-	-- Safety measures for constrData.
-	ConstraintEditor.TransformConstrDataKeys( newConstrData, desc, false, true ) -- Make sure we use str keys
-	if sanitize then ConstraintEditor.SanitizeConstrData( newConstrData, ply ) end
-	local isChanged = ConstraintEditor.CompleteConstrData( constrData, newConstrData, desc, ply )
-	if delete and not isChanged then return end
-
-	local BuildDupeInfo = copyBuildDupeInfo( constr.BuildDupeInfo )
-
-	-- In case some entities have been changed to others. If so, try to preserve the constraint's behavior.
+	-- If the constraint was transferred between entities, try to preserve its behavior in some way.
 	local transferMode = 1
 	if ply then
 		local tool = ConstraintEditor.GetTool( ply )
 		transferMode = tool and tool:GetClientNumber( "transfer_mode", 1 ) or 1
 	end
-	if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, transferMode ) end
 
-	local newConstr = ConstraintEditor.CreateConstr( newConstrData, BuildDupeInfo, desc.Func, ply, not delete, not delete )
+	local constrsReplacements = {}
 
-	ConstraintEditor.ReplaceConstr( constr, newConstr, ply, delete, setEdited )
+	if sanitize then ConstraintEditor.SanitizeConstrData( newConstrData, ply ) end
+
+	for _, constr in pairs( constrs ) do
+
+		local constrData, desc = ConstraintEditor.GetConstrData( constr )
+		local newConstrDataCopy = {}
+		for k, v in pairs( newConstrData ) do
+			newConstrDataCopy[k] = v
+		end
+
+		-- Safety measures for constrData.
+		ConstraintEditor.TransformConstrDataKeys( newConstrDataCopy, desc, false, true ) -- Make sure we use str keys
+		local isChanged = ConstraintEditor.CompleteConstrData( constrData, newConstrDataCopy, desc, ply )
+
+		if delete and not isChanged then continue end
+
+		local BuildDupeInfo = copyBuildDupeInfo( constr.BuildDupeInfo )
+
+		if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrDataCopy, BuildDupeInfo, transferMode ) end
+
+		constrsReplacements[constr] = ConstraintEditor.CreateConstr( newConstrDataCopy, BuildDupeInfo, desc.Func, ply, not delete, not delete )
+
+	end
+
+	-- Menu stuff and deletion
+	ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setEdited )
 
 end
 
@@ -660,25 +679,67 @@ end
 -- Replace (in the access system etc) an existing constraint with another existing one.
 --
 -- Arguments
---	constr (table | Entity): The existing constraint to be replaced
---	newConstr (table | Entity): The existing constraint that will replace the other
+--	constrsReplacements (table): Table whose keys are the constraints to be replaced and values the new ones
 --	ply (Player | nil): The player who supposedly owns newConstr (arg)
 --	delete (boolean): Only if true, deletes the old constraint, and only if newConstr (arg) is valid.
 --	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), and only if newConstr (arg) is valid.
-function ConstraintEditor.ReplaceConstr( constr, newConstr, ply, delete, setEdited )
+function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setEdited )
 
-	if not ( isentity( newConstr ) and newConstr:IsValid() ) then return false end
+	local surfaceConstrsData = ConstraintEditor.GetSurfaceConstrsData( constrsReplacements )
 
-	-- Try to give permissions to edit the new constraint to all players that had access to the old one.
-	-- Comes before the "AddEditedConstr" to prevent 2 nodes appearing for the same constraint in ply's editor
-	ConstraintEditor.TransferAccess( constr, newConstr )
+	ConstraintEditor.NetSend(
+		NT.REGISTER_CONSTRS, ply,
+		{ surfaceConstrsData }
+	)
 
-	if not delete then return end
+	local newConstrs, deletedConstrs = {}, {}
 
-	-- TODO: check if players other than ply are editing the constr so that editor stays open for them
-	if setEdited and ply then ConstraintEditor.FillEditorWithConstr( { newConstr }, ply ) end
+	for constr, newConstr in pairs( constrsReplacements ) do
 
-	-- Comes after the "AddEditedConstr" to keep the node open in ply's menu in some specific cases
-	ConstraintEditor.DeleteConstr( constr )
+		if not ( isentity( newConstr ) and newConstr:IsValid() ) or constr == newConstr then continue end
+
+		ConstraintEditor.RegisterConstr( newConstr )
+
+		if setEdited then
+			newConstrs[newConstr:GetCreationID()] = true
+		end
+
+
+		if delete then
+			local constrID = constr:GetCreationID()
+			deletedConstrs[constrID] = true
+			ConstraintEditor.constrs[constrID] = nil
+			SafeRemoveEntity( constr )
+		end
+
+	end
+
+	local t = { ConstraintEditor.ToNetConstrIDs( deletedConstrs ) }
+
+	print( "ReplaceConstrs: deletedConstrs" )
+	PrintTable( deletedConstrs )
+
+	print( "ReplaceConstrs: ConstraintEditor.ToNetConstrIDs( deletedConstrs )" )
+	PrintTable( t )
+
+	if setEdited and isentity( ply ) and ply:IsPlayer() then
+
+		local constrType = next( constrsReplacements ).Type
+
+		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS, ConstraintEditor.ToNetConstrIDs( newConstrs ) ) then
+			ConstraintEditor.NetAdd( { constrType } )
+			ConstraintEditor.NetAdd( unpack( t ) )
+			net.Send( ply )
+		end
+
+	end
+
+	if delete then
+		ConstraintEditor.NetSend(
+			NT.UNREGISTER_CONSTRS, ConstraintEditor.GetEditorPlayers(),
+			unpack( t )
+		)
+	end
+
 
 end

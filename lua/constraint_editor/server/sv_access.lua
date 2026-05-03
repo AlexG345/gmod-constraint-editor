@@ -31,8 +31,13 @@ end
 --	constr (Entity | boolean): constr (arg) if ply (arg) can access it, or false
 function ConstraintEditor.AccessConstraint( ply, constr )
 
+	if not IsValid( constr ) then return end
+
 	local f = constr.GetConstrainedEntities
 	local first, second = f and f( constr )
+	if not first then first = constr.Ent1 end
+	if not second then second = constr.Ent1 end
+
 	return ( ConstraintEditor.AccessEntity( ply, first ) or ConstraintEditor.AccessEntity( ply, second ) ) and constr or false
 
 end

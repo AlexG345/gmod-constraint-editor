@@ -13,9 +13,10 @@ ConstraintEditor.netTags = {
 	REGISTER_CONSTRS		= 11,
 	FILL_CONSTR_EDITOR		= 12,
 	CLEAR_EDITOR_DATA		= 13,
-	UNREGISTER_CONSTRS		= 14,
-	TRANSFER_CONSTRS		= 15,
-	TRANSFER_ALL_CONSTRS	= 16,
+	SELECT_CONSTRS			= 14,
+	UNREGISTER_CONSTRS		= 15,
+	TRANSFER_CONSTRS		= 16,
+	TRANSFER_ALL_CONSTRS	= 17,
 }
 
 
@@ -31,6 +32,30 @@ function ConstraintEditor.GetNetTagName( netTag )
 		if tag == netTag then return name end
 	end
 	return "UNKNOWN"
+end
+
+
+local function netDebug( isDebugHeader, isSender, netTag, args )
+
+	if isDebugHeader then
+
+		local text1, text2 = "SERVER", "CLIENT"
+
+		if ( CLIENT and isSender ) or ( SERVER and not isSender ) then
+			text1, text2 = text2, text1
+		end
+
+		print( "" )
+		print( "----- netDebug -----" )
+		print( "" )
+		print( text1 .. " tells " .. text2 .. " to " .. ConstraintEditor.GetNetTagName( netTag ) .. "(" .. netTag .. ")" )
+
+	end
+
+	if args then PrintTable( { args = args } ) end
+
+	print( "" )
+
 end
 
 
@@ -81,19 +106,38 @@ function ConstraintEditor.NetStartWrite( tag, ... )
 
 	if not isnumber( tag ) then return false end
 
+	netDebug( true, true, tag, nil )
+
 	net.Start( "constraint_editor_net" )
 
 		net.WriteUInt( tag, BIT_COUNT.TAG )
 
-		for _, tab in ipairs( { ... } ) do
-			local v, arg = tab[1], tab[2]
-			local write = ConstraintEditor.GetNetWriteFunc( v )
-			if write then write( v, arg ) end
-		end
+		ConstraintEditor.NetAdd( ... )
 
 	return true
 
 end
+
+
+-- Writes data to the current net message.
+-- Note that this does not send or start the message, only writes some data.
+--
+-- Arguments:
+--	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
+--		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
+--		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
+function ConstraintEditor.NetAdd( ... )
+
+	netDebug( false, true, nil, { ... } )
+
+	for _, tab in ipairs( { ... } ) do
+		local v, arg = tab[1], tab[2]
+		local write = ConstraintEditor.GetNetWriteFunc( v )
+		if write then write( v, arg ) end
+	end
+
+end
+
 
 
 -- Put a constraint creation ID into an appropriate format for the net send functions
@@ -138,4 +182,21 @@ function ConstraintEditor.ToNetConstrIDs( constrIDs, dontAddCount )
 	if not dontAddCount then tab[1][1] = constrCount end
 
 	return unpack( tab )
+end
+
+
+-- Call this to start listening to net messages
+function ConstraintEditor.HandleNetRequests()
+
+	net.Receive( "constraint_editor_net", function( len, ply )
+
+		if SERVER and not ( ply and ply:IsPlayer() ) then return end
+
+		local tag = net.ReadUInt( BIT_COUNT.TAG )
+		local data = { ConstraintEditor.netFunctions[tag]( ply ) }
+
+		--netDebug( true, false, tag, data )
+
+	end )
+
 end

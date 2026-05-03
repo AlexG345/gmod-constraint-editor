@@ -4,25 +4,94 @@
 ----------------------------------------------------------
 
 
+local NT = ConstraintEditor.netTags
+
+
 local PANEL = {}
 
 
 function PANEL:Init()
 
-	self.Divider = self:Add( "DVerticalDivider" )
-	self.Divider:Dock( FILL )
-	self.Divider:SetTopHeight( 240 )
-	self.Divider:SetTopMin( 1 )
-	self.Divider:SetBottomMin( 1 )
-	self.Divider:SetDividerHeight( 5 )
+	local constrBrowser = self
 
-	local p = self.Divider:Add( "DSizeToContents" )
-	self.Divider:SetTop( p )
-	self.constraintTree = p:Add( "DConstraintTree" )
+	self.vDivider = self:Add( "DVerticalDivider" )
+	self.vDivider:Dock( FILL )
+	self.vDivider:SetDividerHeight( 5 )
 
-	p = self.Divider:Add( "DSizeToContents" )
-	self.Divider:SetBottom( p )
-	self.constraintEditor = p:Add( "DConstraintEditor" )
+	self.vDivider:SetTopMin( 400 )
+
+		local hDivider = self.vDivider:Add( "DHorizontalDivider" )
+		self.vDivider:SetTop( hDivider )
+		self.vDivider.hDivider = hDivider
+		--hDivider:Dock( FILL )
+		hDivider:SetDividerWidth( 5 )
+
+		hDivider:SetLeftMin( 105 )
+
+			local constraintTree = hDivider:Add( "DConstraintTree" )
+			hDivider:SetLeft( constraintTree )
+			self.constraintTree = constraintTree
+
+			local constraintEditor = hDivider:Add( "DConstraintEditor" )
+			hDivider:SetRight( constraintEditor )
+			self.constraintEditor = constraintEditor
+
+		local tileLayout	= self.vDivider:Add( "DTileLayout" )
+		self.tileLayout	= tileLayout
+		self.vDivider:SetBottom( tileLayout )
+		local buttonWidth = 140
+		local buttonHeight = buttonWidth / 5
+
+
+			local buttonApply	= tileLayout:Add( "DButton" )
+			self.buttonApply	= buttonApply
+			-- "icon16/database_refresh.png"
+			-- "icon16/server_go.png"
+			buttonApply:SetImage( "icon16/link_go.png" )
+			buttonApply:SetText( "Update Constraints" )
+			buttonApply:SetSize( buttonWidth, buttonHeight )
+
+			function buttonApply:DoClick()
+				constrBrowser:UpdateServer()
+			end
+
+
+			local buttonDuplicate	= tileLayout:Add( "DButton")
+			self.buttonDuplicate	= buttonDuplicate
+			-- "icon16/application_double.png"
+			buttonDuplicate:SetImage( "icon16/link_add.png" )
+			buttonDuplicate:SetText( "Duplicate Constraints" )
+			buttonDuplicate:SetSize( buttonWidth, buttonHeight )
+
+			function buttonDuplicate:DoClick()
+				ConstraintEditor.NetSend(
+					NT.DUPLIC_CONSTRS,
+					ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
+				)
+			end
+
+
+			local buttonDelete	= tileLayout:Add( "DButton" )
+			self.buttonDelete	= buttonDelete
+			-- "icon16/database_delete.png"
+			-- "icon16/server_delete.png"
+			buttonDelete:SetImage( "icon16/link_delete.png" )
+			buttonDelete:SetText( "Delete Constraints" )
+			buttonDelete:SetSize( buttonWidth, buttonHeight )
+
+			function buttonDelete:DoClick()
+				ConstraintEditor.NetSend(
+					NT.REMOVE_CONSTRS,
+					ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
+				)
+			end
+
+		tileLayout:SetBaseSize( buttonHeight )
+
+		self.vDivider.hDivider:SetRightMin( self.constraintEditor.buttonPaste:GetWide() )
+
+	self.vDivider:SetBottomMin( buttonHeight * #self.tileLayout:GetChildren() )
+	self:SetTall( self.vDivider:GetTopMin() + self.vDivider:GetBottomMin() + 100 )
 
 	self.selectionData = {
 		dataType	= "",
@@ -35,7 +104,14 @@ end
 
 
 function PANEL:PerformLayout( width, height )
-	self.Divider:DoConstraints()
+	--self.vDivider:SetTopMin( 100 )
+	self.vDivider:DoConstraints()
+
+	-- TODO: find if there's a better way:
+	-- "dominant" (top/left) min sizes are set here instead of Init
+	-- otherwise they override the base left/top size...
+	self.vDivider:SetTopMin(100)
+	self.vDivider.hDivider:SetLeftMin( 50 )
 end
 
 
@@ -90,12 +166,21 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 	if not ( selection or elimination ) then return end
 
 	local t = self.selectionData
+	local IDs = t.IDs
+
+	local oldFirstID = next( IDs )
 
 	if elimination then
 		if istable( elimination ) then
-			for _, ID in pairs( elimination ) do t.IDs[ID] = nil end
+			for _, ID in pairs( elimination ) do
+				IDs[ID] = nil
+				self.constraintTree:VisualSelectConstrNode( ID, false )
+			end
 		else
-			t.IDs = {}
+			for ID, _ in pairs( IDs ) do
+				IDs[ID] = nil
+				self.constraintTree:VisualSelectConstrNode( ID, false )
+			end
 		end
 	end
 
@@ -103,25 +188,41 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 		selectionDataType = selectionDataType or ""
 
 		-- Update the data type if the browser's selection is empty
-		if t.editMode == ConstraintEditor.EditModes.NONE then
+		if next( IDs ) == nil then
 			t.dataType = selectionDataType
 		end
 
 		-- Select the given IDs if the data type matches
 		if t.dataType == selectionDataType then
-			for _, ID in pairs( selection ) do t.IDs[ID] = true end
+			for _, ID in pairs( selection ) do
+				IDs[ID] = true
+				self.constraintTree:VisualSelectConstrNode( ID, true )
+			end
 		end
 	end
 
+	local EM = ConstraintEditor.EditModes
 	local editModeChanged = self:UpdateEditMode()
 
 	-- Clear the editor now to prevent the user from accidentally sending current
 	-- values meant for the old selection to the (vastly different) new selection
 	if editModeChanged then
 		self.constraintEditor:Clear()
+		self.constraintEditor:EnableCacheComparing( t.editMode ~= EM.MANY )
 	end
 
-	local dataNeeded = editModeChanged and t.editMode ~= ConstraintEditor.EditModes.NONE
+	local editingSomething = t.editMode ~= EM.NONE
+
+	-- Either:
+	-- We passed from batch mode to single mode, or vice versa
+	-- We stayed in single mode but we're not editing the same thing (because different ID)
+
+	local dataNeeded = editingSomething and (
+		editModeChanged or (
+			( t.editMode == EM.SINGLE ) and
+			( oldFirstID ~= next( IDs ) )
+		)
+	)
 
 	return dataNeeded, t.IDs, t.editMode
 
@@ -153,7 +254,10 @@ function PANEL:ToggleIDs( IDsToToggle, selectionDataType, clearSelection )
 	local IDs = self.selectionData.IDs
 
 	for _, constrID in pairs( IDsToToggle ) do
-		table.insert( alreadyInIDS[IDs[constrID] or false], constrID )
+		table.insert(
+			alreadyInIDS[( IDs[constrID] and true ) or false],
+			constrID
+		)
 	end
 
 	return self:SelectIDs( alreadyInIDS[false], selectionDataType, alreadyInIDS[true] )
@@ -192,13 +296,13 @@ function PANEL:UpdateServer()
 	local constrData	= self.constraintEditor:GetEditedValues()
 
 	ConstraintEditor.NetSend(
-		ConstraintEditor.netTags.UPDATE_CONSTRS,
+		NT.UPDATE_CONSTRS,
 		{ constrData },
 		ConstraintEditor.ToNetConstrIDs( constrIDs )
 	)
 
-	-- TODO: add back constraint type selection
-	-- ConstraintEditor.NetSend( ConstraintEditor.netTags.UPDATE_TYPE,  { constrData }, { constrData.Type } )
+	-- TODO: add back constraint type selection?
+	-- ConstraintEditor.NetSend( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 
 end
 

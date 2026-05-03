@@ -1,7 +1,6 @@
 ConstraintEditor.constrs = {}
 
 
-
 -- Register constraints so that they become visible and editable in the HUD and menu.
 --
 -- Arguments:
@@ -25,6 +24,8 @@ function ConstraintEditor.RegisterConstrs( surfaceConstrsData )
 end
 
 
+-- Unregister constraints by their creation IDs
+--
 -- Arguments:
 --	A table whose keys are the constraint creation IDs of the constraints we want to unregister
 function ConstraintEditor.UnregisterConstrs( constrIDs )
@@ -36,6 +37,20 @@ function ConstraintEditor.UnregisterConstrs( constrIDs )
 		for constrID, _ in pairs( constrIDs ) do
 			constrDatas[constrID] = nil
 		end
+	end
+
+end
+
+
+-- Unregister all constraints
+function ConstraintEditor.UnregisterAllConstrs()
+
+	ConstraintEditor.constrs = {}
+
+	local constrBrowser	= ConstraintEditor.GetConstrBrowser()
+
+	if IsValid( constrBrowser ) then
+		constrBrowser:Clear()
 	end
 
 end

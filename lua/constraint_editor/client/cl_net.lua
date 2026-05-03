@@ -1,3 +1,8 @@
+-- Contains:
+--	Functions to send/receive data to/from the server
+--	The exact behavior when receiving data from the server
+
+
 local NT = ConstraintEditor.netTags
 local BIT_COUNT = ConstraintEditor.netBitCounts
 
@@ -5,13 +10,6 @@ local BIT_COUNT = ConstraintEditor.netBitCounts
 function ConstraintEditor.NetSend( tag, ... )
 
 	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
-
-	print( "[debug] CLIENT -> SERVER" )
-	print( "tag: ", ConstraintEditor.GetNetTagName( tag ) .. "(" .. tag .. ")" )
-	PrintTable( {
-		args = { ... }
-	} )
-	print( "" )
 
 	net.SendToServer()
 
@@ -47,9 +45,10 @@ end
 
 
 -- Different stuff is done depending on the net tag received from the server:
-local netFunctions = {
+ConstraintEditor.netFunctions = {
 
 	[NT.TOOLGUN_LEFT_CLICK] = function()
+
 		local ent = net.ReadEntity()
 		-- If the player is pressing shift, assume that they want to edit an extra entity on top of any currently edited ones.
 		local clearSelection = not LocalPlayer():KeyDown( IN_SPEED )
@@ -60,13 +59,14 @@ local netFunctions = {
 		else
 			ConstraintEditor.ToggleEntity( ent, clearSelection )
 		end
+
+		return ent
+
 	end,
 
 	[NT.TOOLGUN_RIGHT_CLICK] = function()
 
 		local constrHovered, constrID = isHoveringConstr()
-
-		print( ConstraintEditor.ToNetConstrIDs( { [constrID] = true } ) )
 
 		if constrHovered then
 			ConstraintEditor.NetSend(
@@ -76,6 +76,7 @@ local netFunctions = {
 		else
 			ConstraintEditor.SelectEntity( nil, true )
 		end
+
 	end,
 
 	[NT.TOOLGUN_MIDDLE_CLICK] = function()
@@ -83,8 +84,7 @@ local netFunctions = {
 		local constrBrowser	= ConstraintEditor.GetConstrBrowser()
 		local constrIDs		= constrBrowser and constrBrowser.selectionData.IDs
 
-		local ply = LocalPlayer()
-		local ent = ply:GetEyeTrace().Entity
+		local ent = LocalPlayer():GetEyeTrace().Entity
 
 		if constrIDs and next( constrIDs ) ~= nil then
 			-- Transfer the selected constraints of the selected entities (except ent) to ent
@@ -104,31 +104,26 @@ local netFunctions = {
 	end,
 
 	[NT.REGISTER_CONSTRS] = function()
+
 		local data = net.ReadTable()
 		ConstraintEditor.RegisterConstrs( data )
+
+		return data
+
 	end,
 
 	[NT.UNREGISTER_CONSTRS] = function()
 
 		local constrIDs = getNetConstrIDs()
-		print("received: unregister constrs")
-		PrintTable( constrIDs )
 
 		ConstraintEditor.UnregisterConstrs( constrIDs )
 
+		return constrIDs
+
 	end,
 
-
 	[NT.UNREGISTER_ALL_CONSTRS] = function()
-
-		ConstraintEditor.constrs = {}
-
-		local constrBrowser	= ConstraintEditor.GetConstrBrowser()
-
-		if IsValid( constrBrowser ) then
-			constrBrowser:Clear()
-		end
-
+		ConstraintEditor.UnregisterAllConstrs()
 	end,
 
 	[NT.FILL_CONSTR_EDITOR] = function()
@@ -140,21 +135,20 @@ local netFunctions = {
 			constrEditor:Fill( { values = data[1], args = data[2] } )
 		end
 
+		return data
+
+	end,
+
+	[NT.SELECT_CONSTRS] = function()
+
+		local selection		= getNetConstrIDs()
+		local constrType	= net.ReadString()
+		local elimination	= getNetConstrIDs()
+
+		ConstraintEditor.SelectConstrs( selection, constrType, elimination )
+
+		return selection, constrType, elimination
+
 	end,
 
 }
-
-
--- Start listening to net messages
-function ConstraintEditor.HandleNetRequests()
-
-	net.Receive( "constraint_editor_net", function( len, _ )
-
-		local tag = net.ReadUInt( BIT_COUNT.TAG )
-		netFunctions[tag]()
-
-	end )
-
-end
-
-
