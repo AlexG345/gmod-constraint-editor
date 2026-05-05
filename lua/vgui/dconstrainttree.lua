@@ -158,17 +158,30 @@ function PANEL:RegisterConstrs( surfaceConstrsData )
 end
 
 
-function PANEL:UnregisterConstr( constrID )
+function PANEL:UnregisterConstrs( constrIDs )
 
-	local constrNode = self:GetConstrNode( constrID )
-	self.constrNodes[constrID] = nil
+	local removeCount = 0
+	local constrTypeNode
 
-	if not constrNode then return end
+	for _, constrID in pairs( constrIDs ) do
 
-	local constrTypeNode = constrNode:GetParentNode()
-	constrNode:Remove()
+		local constrNode = self:GetConstrNode( constrID )
+		self.constrNodes[constrID] = nil
 
-	if constrTypeNode:GetChildNodeCount() <= 1 then
+		if not constrNode then continue end
+
+		print( constrNode:GetParentNode(), constrTypeNode )
+		constrTypeNode = constrTypeNode or constrNode:GetParentNode()
+
+		constrNode:Remove()
+		removeCount = removeCount + 1
+
+	end
+
+	print("CALLED")
+	print("GETS REMOVED?: ", constrTypeNode:GetChildNodeCount() <= removeCount)
+
+	if constrTypeNode and constrTypeNode:GetChildNodeCount() <= removeCount then
 		self:ClearConstrType( constrTypeNode.constrType )
 	end
 

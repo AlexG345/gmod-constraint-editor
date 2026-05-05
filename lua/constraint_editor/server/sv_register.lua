@@ -37,21 +37,42 @@ function ConstraintEditor.RegisterConstrs( constrs )
 end
 
 
--- Forgets all data related to some constraints using their creation IDs
-function ConstraintEditor.UnregisterConstrs( constrIDs )
+-- Forgets all data related to some constraints
+--
+-- Argument:
+--	constrs (table): Table whose values are the constraints we want to unregister
+function ConstraintEditor.UnregisterConstrs( constrs )
 
-	PrintTable( ConstraintEditor.GetEditorPlayers() )
-	PrintTable( constrIDs )
-	PrintTable( { ConstraintEditor.ToNetConstrIDs( constrIDs ) } )
+	local constrIDs = {}
+	for _, constr in pairs( constrs ) do
+		if istable( constr ) then constr = constr.Constraint end
+		constrIDs[constr:GetCreationID()] = true
+	end
+	ConstraintEditor.UnregisterConstrIDs( constrIDs )
+
+end
+
+
+
+-- Forgets all data related to some constraints using their creation IDs
+--
+-- Argument:
+--	constrIDs (table): Table whose keys are the constraint creation IDs we want to forget (if the associated value is not false)
+function ConstraintEditor.UnregisterConstrIDs( constrIDs )
+
+	local unregistered = false
+
+	for constrID, _ in pairs( constrIDs ) do
+		unregistered = true
+		ConstraintEditor.constrs[constrID] = nil
+	end
+
+	if not unregistered then return end
 
 	ConstraintEditor.NetSend(
 		NT.UNREGISTER_CONSTRS, ConstraintEditor.GetEditorPlayers(),
 		ConstraintEditor.ToNetConstrIDs( constrIDs )
 	)
-
-	for constrID, _ in pairs( constrIDs ) do
-		ConstraintEditor.constrs[constrID] = nil
-	end
 
 end
 
@@ -112,14 +133,14 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	print("unsharedConstrs:", unsharedConstrs)
 	PrintTable( unsharedConstrs )
 
-	local surfaceConstrsData, constrs = ConstraintEditor.GetSurfaceConstrsData( unsharedConstrs )
+	ConstraintEditor.UnregisterConstrs( unsharedConstrs )
 
-	ConstraintEditor.UnregisterConstrs( constrs )
-
+	--[[
 	ConstraintEditor.NetSend(
 		NT.UNREGISTER_CONSTRS, ply,
 		ConstraintEditor.ToNetConstrIDs( surfaceConstrsData )
 	)
+	]]
 
 	if next( t[ply] ) == nil then
 		local tool = ConstraintEditor.GetTool( ply )
@@ -185,7 +206,7 @@ function ConstraintEditor.CleanupTables()
 	end
 
 	if next( badConstrIDs ) ~= nil then
-		ConstraintEditor.UnregisterConstrs( badConstrIDs )
+		ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
 	end
 
 

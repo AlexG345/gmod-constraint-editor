@@ -19,69 +19,61 @@ function PANEL:Init()
 
 	local editor = self
 
-	self.vDivider = self:Add( "DVerticalDivider" )
-	self.vDivider:Dock( FILL )
-	self.vDivider:SetDividerHeight( 5 )
+	local buttonWidth = 120
+	local buttonHeight = buttonWidth / 5
 
-	self.vDivider:SetTopMin( 300 )
+	self.Properties = self:Add( "DProperties" )
+	self.Properties:Dock( FILL )
 
-		self.Properties = self.vDivider:Add( "DProperties" )
-		self.vDivider:SetTop( self.Properties )
+	local tileLayout	= self:Add( "DTileLayout" )
+	self.tileLayout		= tileLayout
+	tileLayout:Dock( BOTTOM )
 
-		local tileLayout	= self.vDivider:Add( "DTileLayout" )
-		self.tileLayout	= tileLayout
-		self.vDivider:SetBottom( tileLayout )
-		local buttonWidth = 120
-		local buttonHeight = 24
+		local buttonCopyAll = self.tileLayout:Add( "DButton" )
+		buttonCopyAll:SetImage( "icon16/page_white_copy.png" )
+		buttonCopyAll:SetText( "Copy all values" )
+		buttonCopyAll:SetSize( buttonWidth, buttonHeight )
 
-			local buttonCopyAll = self.tileLayout:Add( "DButton" )
-			self.buttonCopyAll = buttonCopyAll
-			buttonCopyAll:SetImage( "icon16/page_white_copy.png" )
-			buttonCopyAll:SetText( "Copy all values" )
-			buttonCopyAll:SetSize( buttonWidth, buttonHeight )
+		function buttonCopyAll:DoClick()
+			editor:CopyProperties( editor.editedProperties, editor.cachedProperties )
+			editor.buttonPaste:SetEnabled( editor:CanPaste() )
+		end
 
-			function buttonCopyAll:DoClick()
-				editor:CopyProperties( editor.editedProperties, editor.cachedProperties )
-				editor.buttonPaste:SetEnabled( editor:CanPaste() )
-			end
+		local buttonCopyEdited = self.tileLayout:Add( "DButton" )
+		buttonCopyEdited:SetImage( "icon16/page_copy.png" )
+		buttonCopyEdited:SetText( "Copy edited values" )
+		buttonCopyEdited:SetSize( buttonWidth, buttonHeight )
 
-			local buttonCopyEdited = self.tileLayout:Add( "DButton" )
-			self.buttonCopyEdited = buttonCopyEdited
-			buttonCopyEdited:SetImage( "icon16/page_copy.png" )
-			buttonCopyEdited:SetText( "Copy edited values" )
-			buttonCopyEdited:SetSize( buttonWidth, buttonHeight )
+		function buttonCopyEdited:DoClick()
+			editor:CopyProperties( editor.editedProperties )
+			editor.buttonPaste:SetEnabled( editor:CanPaste() )
+		end
 
-			function buttonCopyEdited:DoClick()
-				editor:CopyProperties( editor.editedProperties )
-				editor.buttonPaste:SetEnabled( editor:CanPaste() )
-			end
+		local buttonPaste = self.tileLayout:Add( "DButton" )
+		self.buttonPaste = buttonPaste
+		buttonPaste:SetImage( "icon16/page_paste.png" )
+		buttonPaste:SetText( "Paste" )
+		buttonPaste:SetSize( buttonWidth, buttonHeight )
 
-			local buttonPaste = self.tileLayout:Add( "DButton" )
-			self.buttonPaste = buttonPaste
-			buttonPaste:SetImage( "icon16/page_paste.png" )
-			buttonPaste:SetText( "Paste" )
-			buttonPaste:SetSize( buttonWidth, buttonHeight )
+		function buttonPaste:DoClick()
+			editor:SafeSetProperties( editor.copiedProperties )
+		end
 
-			function buttonPaste:DoClick()
-				editor:SafeSetProperties( editor.copiedProperties )
-			end
+		buttonPaste:SetEnabled( false )
 
-			buttonPaste:SetEnabled( false )
+		local buttonCache = self.tileLayout:Add( "DButton" )
+		buttonCache:SetImage( "icon16/page_refresh.png" )
+		buttonCache:SetText( "Reset to cache" )
+		buttonCache:SetSize( buttonWidth, buttonHeight )
 
-			local buttonCache = self.tileLayout:Add( "DButton" )
-			self.buttonCache = buttonCache
-			buttonCache:SetImage( "icon16/page_refresh.png" )
-			buttonCache:SetText( "Reset to cache" )
-			buttonCache:SetSize( buttonWidth, buttonHeight )
+		function buttonCache:DoClick()
+			local b = editor.cacheComparing
+			editor:EnableCacheComparing( true )
+			editor:SafeSetProperties( editor.cachedProperties )
+			editor:EnableCacheComparing( b )
+		end
 
-			function buttonCache:DoClick()
-				local b = editor.cacheComparing
-				editor:EnableCacheComparing( true )
-				editor:SafeSetProperties( editor.cachedProperties )
-				editor:EnableCacheComparing( b )
-			end
-
-		tileLayout:SetBaseSize( buttonHeight )
+	tileLayout:SetBaseSize( buttonHeight )
 
 
 	self.typeRestoreFuncs = {
@@ -91,10 +83,8 @@ function PANEL:Init()
 		Vector	= Vector,
 		table	= string.ToTable,
 		color	= string.ToColor,
-	}
 
-	self.vDivider:SetBottomMin( buttonHeight * #self.tileLayout:GetChildren() )
-	self:SetTall( self.vDivider:GetTopMin() + self.vDivider:GetBottomMin() )
+	}
 
 	self.copiedProperties = self:GetEmptyProperties()
 	self:Clear()
@@ -104,12 +94,10 @@ function PANEL:Init()
 end
 
 
-function PANEL:PerformLayout( width, height )
-
-	self.vDivider:DoConstraints()
-	self.vDivider:SetTopMin(100)
-
-end
+-- function PANEL:PerformLayout( width, height )
+-- 	self.vDivider:DoConstraints()
+-- 	self.vDivider:SetTopMin(100)
+-- end
 
 
 -- Enable or disable cache comparing. If cache comparing is enabled, values
@@ -227,8 +215,6 @@ function PANEL:CreateRows( properties )
 				local edited = ( not editor.cacheComparing ) or ( tostring( editor.cachedProperties.values[i] ) ~= newString )
 
 				print( arg, "edited: ", edited)
-
-				local panel = self.Inner
 
 				self:SetPaintBackgroundEnabled( edited )
 

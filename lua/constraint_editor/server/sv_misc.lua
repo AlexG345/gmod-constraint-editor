@@ -13,11 +13,14 @@ end
 -- Deletes a constraint entity and data associated to its constrID
 --
 -- Arguments:
---	constr (Entity): The constraint entity we want to delete
-function ConstraintEditor.DeleteConstr( constr )
-	constr.CEInvalid = true
-	local constrID = constr:GetCreationID()
-	print( "ConstraintEditor.DeleteConstr( ", constr, "[", constrID, "])")
-	ConstraintEditor.UnregisterConstrs( { [constrID] = true } )
-	SafeRemoveEntity( constr )
+--	constrs (table): Table whose values are the constraint entities we want to delete
+function ConstraintEditor.DeleteConstrs( constrs )
+
+	for _, constr in pairs( constrs ) do
+		constr.CEInvalid = true
+		SafeRemoveEntity( constr )
+	end
+
+	ConstraintEditor.UnregisterConstrs( constrs )
+
 end

@@ -637,6 +637,8 @@ end
 --	setEdited (boolean): Only if true, makes ply (arg) edit the new constraint in case of its successful creation
 function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply, restoreBehavior, sanitize, delete, setEdited )
 
+	if next( constrs ) == nil then return end
+
 	-- If the constraint was transferred between entities, try to preserve its behavior in some way.
 	local transferMode = 1
 	if ply then
@@ -681,9 +683,11 @@ end
 -- Arguments
 --	constrsReplacements (table): Table whose keys are the constraints to be replaced and values the new ones
 --	ply (Player | nil): The player who supposedly owns newConstr (arg)
---	delete (boolean): Only if true, deletes the old constraint, and only if newConstr (arg) is valid.
+--	delete (boolean): Only if true, deletes the old constraint, and only if the replacement one is valid.
 --	setEdited (boolean): Only if true, sets the new constraint as the currently edited one in the menu of ply (arg), and only if newConstr (arg) is valid.
 function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setEdited )
+
+	if next( constrsReplacements ) == nil then return end
 
 	local surfaceConstrsData = ConstraintEditor.GetSurfaceConstrsData( constrsReplacements )
 

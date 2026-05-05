@@ -85,17 +85,15 @@ local function getNetConstrs( ply, constrCount )
 		local constr = ConstraintEditor.AccessConstraint( ply, ConstraintEditor.GetConstr( constrID ) )
 
 		if not IsValid( constr ) then
-			table.insert( badConstrIDs, { [constrID] = true } )
+			badConstrIDs[constrID] = true
 		else
 			validConstrCount = validConstrCount + 1
 			table.insert( constrs, constr )
 		end
 
 		if validConstrCount < constrCount then
-			ConstraintEditor.UnregisterConstrs( badConstrIDs )
+			ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
 		end
-
-		print( "getNetConstrs loop: ", constrID, ConstraintEditor.GetConstr( constrID ), constr )
 
 	end
 
@@ -144,9 +142,7 @@ ConstraintEditor.netFunctions = {
 
 		local constrs = getNetConstrs( ply )
 
-		for _, constr in ipairs( constrs ) do
-			ConstraintEditor.DeleteConstr( constr )
-		end
+		ConstraintEditor.DeleteConstrs( constrs )
 
 		return constrs
 
@@ -164,7 +160,7 @@ ConstraintEditor.netFunctions = {
 	[NT.DUPLIC_CONSTRS] = function( ply )
 
 		local constrs = getNetConstrs( ply )
-		ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply, true, true, true, true )
+		ConstraintEditor.CreateConstrsFromConstrs( constrs, {}, ply, true, false, false, false )
 
 		return constrs
 

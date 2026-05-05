@@ -5,7 +5,7 @@ ConstraintEditor.HoveredConstrInfo = { ID = -1, Type = "" } -- for the stool
 hook.Add( "PreDrawHalos", "AddPropHalos", function()
 	if LocalPlayer():GetActiveWeapon():GetClass() ~= "gmod_tool" or LocalPlayer():GetTool().Mode ~= ConstraintEditor.Mode then return end
 	for col, entities in pairs( ConstraintEditor.Halos ) do
-		halo.Add( entities, col, 3, 3, 2 )
+		halo.Add( entities, col, 3, 3, 5, true, true )
 	end
 end )
 
@@ -27,12 +27,12 @@ local beamColorsWeighted = {
 
 local haloColorsWeighted = {
 	{
-		HSVToColor( 17, 0.5, 1 ), -- red (ent1)
-		HSVToColor( 200, 0.5, 1 ) -- blue (ent2)
+		HSVToColor( 0, 0.4, 0.8 ), -- red (ent1)
+		HSVToColor( 200, 0.4, 0.8 ) -- blue (ent2)
 	},
 	{
-		HSVToColor( 0, 0.8, 1 ), -- stronger red (ent1)
-		HSVToColor( 200, 0.8, 1 ) -- stronger blue (ent2)
+		HSVToColor( 0, 0.66, 1 ), -- stronger red (ent1)
+		HSVToColor( 200, 0.66, 1 ) -- stronger blue (ent2)
 	}
 }
 

@@ -14,84 +14,76 @@ function PANEL:Init()
 
 	local constrBrowser = self
 
-	self.vDivider = self:Add( "DVerticalDivider" )
-	self.vDivider:Dock( FILL )
-	self.vDivider:SetDividerHeight( 5 )
+	local buttonWidth = 140
+	local buttonHeight = buttonWidth / 5
 
-	self.vDivider:SetTopMin( 400 )
+	local hDivider = self:Add( "DHorizontalDivider" )
+	hDivider:SetDividerWidth( 5 )
+	hDivider:Dock( FILL )
 
-		local hDivider = self.vDivider:Add( "DHorizontalDivider" )
-		self.vDivider:SetTop( hDivider )
-		self.vDivider.hDivider = hDivider
-		--hDivider:Dock( FILL )
-		hDivider:SetDividerWidth( 5 )
+	hDivider:SetLeftMin( 105 )
 
-		hDivider:SetLeftMin( 105 )
+		local constraintTree = hDivider:Add( "DConstraintTree" )
+		hDivider:SetLeft( constraintTree )
+		self.constraintTree = constraintTree
 
-			local constraintTree = hDivider:Add( "DConstraintTree" )
-			hDivider:SetLeft( constraintTree )
-			self.constraintTree = constraintTree
+		local constraintEditor = hDivider:Add( "DConstraintEditor" )
+		hDivider:SetRight( constraintEditor )
+		self.constraintEditor = constraintEditor
 
-			local constraintEditor = hDivider:Add( "DConstraintEditor" )
-			hDivider:SetRight( constraintEditor )
-			self.constraintEditor = constraintEditor
+	local tileLayout	= self:Add( "DTileLayout" )
+	self.tileLayout	= tileLayout
+	tileLayout:Dock( BOTTOM )
 
-		local tileLayout	= self.vDivider:Add( "DTileLayout" )
-		self.tileLayout	= tileLayout
-		self.vDivider:SetBottom( tileLayout )
-		local buttonWidth = 140
-		local buttonHeight = buttonWidth / 5
+		local buttonApply	= tileLayout:Add( "DButton" )
+		-- "icon16/database_refresh.png"
+		-- "icon16/server_go.png"
+		buttonApply:SetImage( "icon16/link_go.png" )
+		buttonApply:SetText( "Update Constraints" )
+		buttonApply:SetSize( buttonWidth, buttonHeight )
 
-
-			local buttonApply	= tileLayout:Add( "DButton" )
-			self.buttonApply	= buttonApply
-			-- "icon16/database_refresh.png"
-			-- "icon16/server_go.png"
-			buttonApply:SetImage( "icon16/link_go.png" )
-			buttonApply:SetText( "Update Constraints" )
-			buttonApply:SetSize( buttonWidth, buttonHeight )
-
-			function buttonApply:DoClick()
-				constrBrowser:UpdateServer()
-			end
+		function buttonApply:DoClick()
+			constrBrowser:UpdateServer()
+		end
 
 
-			local buttonDuplicate	= tileLayout:Add( "DButton")
-			self.buttonDuplicate	= buttonDuplicate
-			-- "icon16/application_double.png"
-			buttonDuplicate:SetImage( "icon16/link_add.png" )
-			buttonDuplicate:SetText( "Duplicate Constraints" )
-			buttonDuplicate:SetSize( buttonWidth, buttonHeight )
+		local buttonDuplicate	= tileLayout:Add( "DButton")
+		-- "icon16/application_double.png"
+		buttonDuplicate:SetImage( "icon16/link_add.png" )
+		buttonDuplicate:SetText( "Duplicate Constraints" )
+		buttonDuplicate:SetSize( buttonWidth, buttonHeight )
 
-			function buttonDuplicate:DoClick()
-				ConstraintEditor.NetSend(
-					NT.DUPLIC_CONSTRS,
-					ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
-				)
-			end
+		function buttonDuplicate:DoClick()
+			ConstraintEditor.NetSend(
+				NT.DUPLIC_CONSTRS,
+				ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
+			)
+		end
 
 
-			local buttonDelete	= tileLayout:Add( "DButton" )
-			self.buttonDelete	= buttonDelete
-			-- "icon16/database_delete.png"
-			-- "icon16/server_delete.png"
-			buttonDelete:SetImage( "icon16/link_delete.png" )
-			buttonDelete:SetText( "Delete Constraints" )
-			buttonDelete:SetSize( buttonWidth, buttonHeight )
+		local buttonDelete	= tileLayout:Add( "DButton" )
+		-- "icon16/database_delete.png"
+		-- "icon16/server_delete.png"
+		buttonDelete:SetImage( "icon16/link_delete.png" )
+		buttonDelete:SetText( "Delete Constraints" )
+		buttonDelete:SetSize( buttonWidth, buttonHeight )
 
-			function buttonDelete:DoClick()
-				ConstraintEditor.NetSend(
-					NT.REMOVE_CONSTRS,
-					ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
-				)
-			end
+		function buttonDelete:DoClick()
+			ConstraintEditor.NetSend(
+				NT.REMOVE_CONSTRS,
+				ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
+			)
+		end
 
-		tileLayout:SetBaseSize( buttonHeight )
+	tileLayout:SetBaseSize( buttonHeight )
 
-		self.vDivider.hDivider:SetRightMin( self.constraintEditor.buttonPaste:GetWide() )
+	-- This uses the width of one of the constraint editor's buttons
+	hDivider:SetRightMin( self.constraintEditor.tileLayout:GetChild(1):GetWide() )
 
-	self.vDivider:SetBottomMin( buttonHeight * #self.tileLayout:GetChildren() )
-	self:SetTall( self.vDivider:GetTopMin() + self.vDivider:GetBottomMin() + 100 )
+	-- self.vDivider:SetBottomMin( buttonHeight * #self.tileLayout:GetChildren() )
+	-- self:SetTall( self.vDivider:GetTopMin() + self.vDivider:GetBottomMin() + 100 )
+	self:SetTall( 400 )
+
 
 	self.selectionData = {
 		dataType	= "",
@@ -101,19 +93,6 @@ function PANEL:Init()
 	}
 
 end
-
-
-function PANEL:PerformLayout( width, height )
-	--self.vDivider:SetTopMin( 100 )
-	self.vDivider:DoConstraints()
-
-	-- TODO: find if there's a better way:
-	-- "dominant" (top/left) min sizes are set here instead of Init
-	-- otherwise they override the base left/top size...
-	self.vDivider:SetTopMin(100)
-	self.vDivider.hDivider:SetLeftMin( 50 )
-end
-
 
 
 function PANEL:Clear()
@@ -268,9 +247,8 @@ function PANEL:UnregisterConstrs( constrIDs )
 
 	self:SelectIDs( nil, nil, constrIDs )
 
-	for _, constrID in pairs( constrIDs ) do
-		self.constraintTree:UnregisterConstr( constrID )
-	end
+	self.constraintTree:UnregisterConstrs( constrIDs )
+
 end
 
 
