@@ -8,15 +8,14 @@ ConstraintEditor.netTags = {
 	UPDATE_CONSTRS			= 6,
 	REMOVE_CONSTRS			= 7,
 	DUPLIC_CONSTRS			= 8,
-	UPDATE_TYPE				= 9,
-	UNREGISTER_ALL_CONSTRS	= 10,
-	REGISTER_CONSTRS		= 11,
-	FILL_CONSTR_EDITOR		= 12,
-	CLEAR_EDITOR_DATA		= 13,
-	SELECT_CONSTRS			= 14,
-	UNREGISTER_CONSTRS		= 15,
-	TRANSFER_CONSTRS		= 16,
-	TRANSFER_ALL_CONSTRS	= 17,
+	UNREGISTER_ALL_CONSTRS	= 9,
+	REGISTER_CONSTRS		= 10,
+	FILL_CONSTR_EDITOR		= 11,
+	CLEAR_EDITOR_DATA		= 12,
+	SELECT_CONSTRS			= 13,
+	UNREGISTER_CONSTRS		= 14,
+	TRANSFER_CONSTRS		= 15,
+	TRANSFER_ALL_CONSTRS	= 16,
 }
 
 
@@ -27,7 +26,7 @@ ConstraintEditor.netTags = {
 --
 -- Returns:
 --	(string): The key used to access netTag (arg) through ConstraintEditor.netTags
-function ConstraintEditor.GetNetTagName( netTag )
+function getNetTagName( netTag )
 	for name, tag in pairs( ConstraintEditor.netTags ) do
 		if tag == netTag then return name end
 	end
@@ -36,26 +35,18 @@ end
 
 
 local function netDebug( isDebugHeader, isSender, netTag, args )
-
 	if isDebugHeader then
-
 		local text1, text2 = "SERVER", "CLIENT"
-
 		if ( CLIENT and isSender ) or ( SERVER and not isSender ) then
 			text1, text2 = text2, text1
 		end
-
 		print( "" )
-		print( "----- netDebug -----" )
+		print( "----- Constraint Editor net debug -----" )
 		print( "" )
-		print( text1 .. " tells " .. text2 .. " to " .. ConstraintEditor.GetNetTagName( netTag ) .. "(" .. netTag .. ")" )
-
+		print( text1 .. " tells " .. text2 .. " to " .. getNetTagName( netTag ) .. "(" .. netTag .. ")" )
 	end
-
 	if args then PrintTable( { args = args } ) end
-
 	print( "" )
-
 end
 
 
@@ -75,22 +66,85 @@ BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
 
 
 ConstraintEditor.netWriteFuncs = {
+	[TYPE_NIL]			= function() end,
 	[TYPE_STRING]		= net.WriteString,
-	[TYPE_NUMBER]		= net.WriteUInt,
-	[TYPE_TABLE]		= net.WriteTable,
+	[TYPE_NUMBER]		= net.WriteDouble,
+	[TYPE_TABLE]		= ConstraintEditor.NetWriteTable,
 	[TYPE_BOOL]			= net.WriteBool,
 	[TYPE_ENTITY]		= net.WriteEntity,
-	[TYPE_VECTOR]		= net.WriteVector,
+	[TYPE_VECTOR]		= ConstraintEditor.NetWritePreciseVector,
 	[TYPE_ANGLE]		= net.WriteAngle,
 	[TYPE_MATRIX]		= net.WriteMatrix,
 	[TYPE_COLOR]		= net.WriteColor,
 }
 
 
+ConstraintEditor.netReadFuncs = {
+	[TYPE_NIL]			= function() end,
+	[TYPE_STRING]		= net.ReadString,
+	[TYPE_NUMBER]		= net.ReadDouble,
+	[TYPE_TABLE]		= ConstraintEditor.NetReadTable,
+	[TYPE_BOOL]			= net.ReadBool,
+	[TYPE_ENTITY]		= net.ReadEntity,
+	[TYPE_VECTOR]		= ConstraintEditor.NetReadPreciseVector,
+	[TYPE_ANGLE]		= net.ReadAngle,
+	[TYPE_MATRIX]		= net.ReadMatrix,
+	[TYPE_COLOR]		= net.ReadColor,
+}
 
-function ConstraintEditor.GetNetWriteFunc( v )
-	return ConstraintEditor.netWriteFuncs[TypeID( v )]
+
+local function netWriteType( v )
+	print("write: ", v)
+	local t = TypeID( v )
+	net.WriteUInt( t, 8 )
+	ConstraintEditor.netWriteFuncs[t]( v )
 end
+
+
+local function netReadType()
+	local t = net.ReadUInt( 8 )
+	print("netread, type:", t)
+	return ConstraintEditor.netReadFuncs[t]()
+end
+
+
+-- Works about the same as net.WriteTable but uses ConstraintEditor.NetReadPreciseVector
+function ConstraintEditor.NetWriteTable( tab, seq )
+	if seq then
+		local len = #tab
+		net.WriteUInt( len, 14 ) -- with a 64 kB limit per message you won't be able to write more than 8192 items
+		for i = 1, len do
+			netWriteType( tab[i] )
+		end
+	else
+		for k, v in pairs( tab ) do
+			netWriteType( k )
+			netWriteType( v )
+		end
+		-- End of table
+		netWriteType( nil )
+	end
+end
+
+
+-- Works about the same as net.ReadTable but uses ConstraintEditor.NetReadPreciseVector
+function ConstraintEditor.NetReadTable( seq )
+	local tab = {}
+	if seq then
+		for i = 1, net.ReadUInt( 14 ) do
+			tab[ i ] = netReadType()
+		end
+	else
+		while true do
+			local k = netReadType()
+			if ( k == nil ) then break end
+			tab[ k ] = netReadType()
+		end
+	end
+	print("netreadtable:", tab)
+	return tab
+end
+
 
 
 -- Starts a net message with a tag and optional arguments.
@@ -116,19 +170,38 @@ function ConstraintEditor.NetStartWrite( tag )
 end
 
 
--- Put a constraint creation ID into an appropriate format for the net send functions
+-- Write the 3 components of a vector as floats
+-- Useful because net.WriteVector won't go past 1 decimal precision
 --
 -- Arguments:
---	constrID (int): A constraint creation ID
---
--- Returns:
---	(table): A table containing constrID (arg) and its maximum bit count
-function ConstraintEditor.ToNetConstrID( constrID )
-	return { constrID, BIT_COUNT.CREATION_ID }
+--	vec (Vector): The vector to write
+function ConstraintEditor.NetWritePreciseVector( vec )
+	for i = 1, 3 do net.WriteFloat( vec[i] ) end
 end
 
 
--- Send many constraint creation IDs efficiently
+-- Get a vector by reading 3 floats
+--
+-- Returns:
+--	vec (Vector)
+function ConstraintEditor.NetReadPreciseVector()
+	vec = Vector()
+	for i = 1, 3 do vec[i] = net.ReadFloat() end
+	return vec
+end
+
+
+-- Write many constraint creation IDs efficiently
+-- Note that this won't be more efficient than writing directly if there's just 1 ID to write
+-- Also, the farther apart the IDs are, the less efficient this method is
+-- Examples of when it's not more efficient:
+--	1 ID
+--	2 IDs, with a ID diff of 512 or more
+--	3 IDs, with a ID diff of 16384 or more
+--	4 IDs, with a ID diff of 65536 or more
+--	8 IDs, with a ID diff of about 1048576 or more
+--	100 IDs, with a ID diff of 8388608 or more
+-- Keep in mind that ID diffs of more than a few thousand are very unlikely.
 --
 -- Arguments:
 --	constrIDs (table): A table whose keys are the constraint creation IDs to send
@@ -139,7 +212,7 @@ function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
 
 	PrintTable( constrIDs )
 
-	-- theoretically (untested) hits the 64 kB limit at 2664 constraints or so (worst case), and 4919 constraints or so (~ best case, diff of 1 between each constr ID.)
+	-- theoretically (untested) hits the 64 kB limit between about 2664 constraints (worst case), and about 4919 constraints (best case, diff of 1 between each constr ID.)
 
 	if not constrIDs then return end
 
@@ -157,8 +230,6 @@ function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
 	local diff			= maxConstrID - minConstrID
 	local diffBitCount	= getUIntBitCount( diff )
 
-	print( constrCount, minConstrID, diffBitCount )
-
 	if addCount then
 		net.WriteUInt( constrCount, BIT_COUNT.ENT_ID )				-- 14 bits
 	end
@@ -167,7 +238,6 @@ function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
 	net.WriteUInt( diffBitCount, BIT_COUNT.BIT_COUNT_CREATION_ID )	-- 5 bits
 
 	for constrID, _ in pairs( constrIDs ) do
-		print( constrID - minConstrID )
 		net.WriteUInt( constrID - minConstrID, diffBitCount )
 	end
 

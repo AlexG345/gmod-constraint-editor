@@ -28,7 +28,10 @@ ConstraintEditor.lastTablesCleanup = CurTime()
 --	constrID (int): The creation ID of the constraint
 function ConstraintEditor.RegisterConstr( constr )
 	local constrID = constr:GetCreationID()
+
+	ConstraintEditor.AddCallOnRemove( constr )
 	ConstraintEditor.constrs[constrID] = constr
+
 	return constrID
 end
 
@@ -38,10 +41,16 @@ end
 -- Argument:
 --	constrs (table): Table with keys constraint creation IDs and values the associated constraints
 function ConstraintEditor.RegisterConstrs( constrs )
-	-- table merge would work too
+
+	local CEConstrs = ConstraintEditor.constrs
+
 	for constrID, constr in pairs( constrs ) do
-		ConstraintEditor.constrs[constrID] = constr
+		if not CEConstrs[constrID] then
+			ConstraintEditor.AddCallOnRemove( constr )
+			CEConstrs[constrID] = constr
+		end
 	end
+
 end
 
 
@@ -148,13 +157,6 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	PrintTable( unsharedConstrs )
 
 	ConstraintEditor.UnregisterConstrs( unsharedConstrs )
-
-	--[[ TODO: check what this was used for.. i forgot, and it's broken now anyways
-	ConstraintEditor.NetSend(
-		NT.UNREGISTER_CONSTRS, ply,
-		ConstraintEditor.ToNetConstrIDs( surfaceConstrsData )
-	)
-	]]
 
 	if next( t[ply] ) == nil then
 		local tool = ConstraintEditor.GetTool( ply )

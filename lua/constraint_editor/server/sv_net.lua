@@ -66,7 +66,7 @@ function ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 	if tool then tool:SetStage( 2 ) end
 
 	if ConstraintEditor.NetStartWrite( NT.FILL_CONSTR_EDITOR, ply ) then
-		net.WriteTable( { constrData, desc.Args } )
+		ConstraintEditor.NetWriteTable( { constrData, desc.Args } )
 		net.Send( ply )
 	end
 end
@@ -82,10 +82,6 @@ local function getNetConstrs( ply, constrCount )
 	local validConstrs		= {}
 
 	local badConstrIDs	= {}
-
-	print("constrCount", constrCount)
-	print("minConstrID: ", minConstrID)
-	print("diffBitCount: ", diffBitCount)
 
 	for i = 1, constrCount do
 
@@ -174,7 +170,7 @@ ConstraintEditor.netFunctions = {
 
 	[NT.UPDATE_CONSTRS] = function( ply )
 
-		local newConstrData = net.ReadTable()
+		local newConstrData = ConstraintEditor.NetReadTable()
 		local constrs = getNetConstrs( ply )
 		ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply, true, true, true, true )
 
@@ -189,22 +185,6 @@ ConstraintEditor.netFunctions = {
 		return constrs
 
 	end,
-
-	--[[
-	[NT.UPDATE_TYPE] = function( ply )
-		local newConstrData = net.ReadTable()
-		local constrType = net.ReadString()
-		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
-		if not ( constrType and newConstrData and editedEnts ) then return end
-		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts, constrType )
-		for _, constr in pairs( constrs ) do
-			constr = constr.Constraint
-			constr = ConstraintEditor.AccessConstraint( ply, constr )
-			local constrData = table.Copy( newConstrData )
-			if constr then ConstraintEditor.CreateConstrsFromConstrs( constr, constrData, ply, true, true, true ) end
-		end
-	end,
-	]]
 
 	[NT.TRANSFER_CONSTRS] = function( ply )
 

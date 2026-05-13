@@ -24,21 +24,3 @@ function ConstraintEditor.DeleteConstrs( constrs )
 	ConstraintEditor.UnregisterConstrs( constrs )
 
 end
-
-
-
-
---[[ TODO: go back to this and fix
-hook.Add( "EntityRemoved", "Constraint Library - ConstraintRemoved", function( ent )
-
-	-- Remove this constraint from Entity.Constraints table of the constrained entities
-	if ( ent:IsConstraint() || constraintClasses[ ent:GetClass() ] ) then
-
--- TODO: reread this it's just experimental for now!! it's probably bad practice to overwrite a hook like that too
--- lua_run print( hook.GetTable().EntityRemoved["Constraint Library - ConstraintRemoved"])
--- https://github.com/Facepunch/garrysmod/blob/b2bff902adf7f5b87ec543f873e74e3267e93f26/garrysmod/lua/includes/modules/constraint.lua#L30
-local oldHook = hook.GetTable().EntityRemoved["Constraint Library - ConstraintRemoved"]
-hook.Add( "EntityRemoved", "Constraint Library - ConstraintRemoved", function( ent )
-	print("a")
-end )
-]]

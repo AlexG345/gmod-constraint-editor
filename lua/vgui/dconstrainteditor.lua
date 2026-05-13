@@ -6,15 +6,6 @@
 local PANEL = {}
 
 
-------------------------------------------------------------------------------------------------------------------
--- TODO-NEXT:	Move "server" action buttons to the constraint browser??										--
---				.	The constraint tree would let you select constraints: it should just be a 'visualizer'.		--
---				.	The constraint editor would handle constraint properties (modifying, copying, pasting...).	--
---				.	The constraint browser would be able to tell the server to change the constraints selected	--
---					using the tree, with the data from the constraint editor.									--
---					It would be a kind of link between the two other menus and the server itself				--
-------------------------------------------------------------------------------------------------------------------
-
 function PANEL:Init()
 
 	local editor = self

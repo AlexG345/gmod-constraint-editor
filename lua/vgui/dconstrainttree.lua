@@ -160,8 +160,7 @@ end
 
 function PANEL:UnregisterConstrs( constrIDs )
 
-	local removeCount = 0
-	local constrTypeNode
+	local removes = {}
 
 	for _, constrID in pairs( constrIDs ) do
 
@@ -170,20 +169,18 @@ function PANEL:UnregisterConstrs( constrIDs )
 
 		if not constrNode then continue end
 
-		constrTypeNode = constrTypeNode or constrNode:GetParentNode()
-		print( constrNode:GetParentNode(), constrTypeNode, TODO_REMOVE )
+		local constrTypeNode = constrNode:GetParentNode()
+
+		removes[constrTypeNode] = 1 + ( removes[constrTypeNode] or 0 )
 
 		constrNode:Remove()
-		removeCount = removeCount + 1
 
 	end
 
-	-- print("[debug] DConstraintTree.UnregisterConstrs called")
-	-- print("GETS REMOVED?: ", constrTypeNode and constrTypeNode:GetChildNodeCount() <= removeCount)
-
-	-- Important to check for constrTypeNode existence: if no constraint nodes were found it will be nil!
-	if constrTypeNode and constrTypeNode:GetChildNodeCount() <= removeCount then
-		self:ClearConstrType( constrTypeNode.constrType )
+	for constrTypeNode, removeCount in pairs( removes ) do
+		if constrTypeNode:GetChildNodeCount() <= removeCount then
+			self:ClearConstrType( constrTypeNode.constrType )
+		end
 	end
 
 end

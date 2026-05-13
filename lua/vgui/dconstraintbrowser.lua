@@ -282,12 +282,10 @@ function PANEL:UpdateServer()
 
 	if ConstraintEditor.NetStartWrite( NT.UPDATE_CONSTRS ) then
 		-- constrData is not sequential because edited values can skip indexes (e.g. the user only edited the properties of id 1 and 4)
-		net.WriteTable( constrData )
+		ConstraintEditor.NetWriteTable( constrData )
 		ConstraintEditor.NetWriteConstrIDs( constrIDs )
 		net.SendToServer()
 	end
-
-	-- TODO: add back constraint type selection?
 
 end
 

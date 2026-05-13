@@ -691,7 +691,7 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 	local surfaceConstrsData = ConstraintEditor.GetSurfaceConstrsData( constrsReplacements )
 
-	if ply and ConstraintEditor.NetStartWrite( NT.REGISTER_CONSTRS ) then
+	if ply and ConstraintEditor.NetStartWrite( NT.REGISTER_CONSTRS, ply ) then
 		net.WriteTable( surfaceConstrsData )
 		net.Send( ply )
 	end
@@ -718,23 +718,17 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 	end
 
-	if setEdited and isentity( ply ) and ply:IsPlayer() then
+	if setEdited then
 
 		local constrType = next( constrsReplacements ).Type
 
-		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS ) then
+		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS, ply ) then
 			ConstraintEditor.NetWriteConstrIDs( newConstrs )
 			net.WriteString( constrType )
 			ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
 			net.Send( ply )
 		end
 
-	end
-
-	-- TODO: This is obsolete if CallOnRemove has been added?
-	if delete and ConstraintEditor.NetStartWrite( NT.UNREGISTER_CONSTRS ) then
-		ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
-		net.Send( ConstraintEditor.GetEditorPlayers() )
 	end
 
 end

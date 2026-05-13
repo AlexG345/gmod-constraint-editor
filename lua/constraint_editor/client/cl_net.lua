@@ -132,7 +132,7 @@ ConstraintEditor.netFunctions = {
 
 	[NT.FILL_CONSTR_EDITOR] = function()
 
-		local data = net.ReadTable()
+		local data = ConstraintEditor.NetReadTable()
 		local constrEditor = ConstraintEditor.GetConstrEditor()
 
 		if data and IsValid( constrEditor ) then
