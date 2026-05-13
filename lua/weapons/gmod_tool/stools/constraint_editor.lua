@@ -20,7 +20,7 @@ if CLIENT then
 		{ name = "left0", stage = 0 },
 		{ name = "left", stage = 1 },
 		{ name = "left", stage = 2 },
-		{ name = "shift", icon2 = "icon16/keyboard.png", icon = "icon16/arrow_up.png" },
+		{ name = "shift", icon = "icon16/arrow_up.png" },
 		{ name = "right", stage = 1 },
 		{ name = "right", stage = 2 },
 		{ name = "reload1", stage = 1 },
@@ -66,10 +66,12 @@ function TOOL:LeftClick( trace )
 
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.NetSend(
-			ConstraintEditor.netTags.TOOLGUN_LEFT_CLICK, self:GetOwner(),
-			{ trace.Entity }
-		)
+
+		local ply = self:GetOwner()
+		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_LEFT_CLICK, ply ) then
+			net.WriteEntity( trace.Entity )
+			net.Send( ply )
+		end
 	end
 
 	return true
@@ -81,9 +83,7 @@ function TOOL:RightClick( trace )
 
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.NetSend(
-			ConstraintEditor.netTags.TOOLGUN_RIGHT_CLICK, self:GetOwner()
-		)
+		ConstraintEditor.NetSend( ConstraintEditor.netTags.TOOLGUN_RIGHT_CLICK, self:GetOwner() )
 	end
 
 	return true
@@ -95,9 +95,7 @@ function TOOL:Reload()
 
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.NetSend(
-			ConstraintEditor.netTags.TOOLGUN_MIDDLE_CLICK, self:GetOwner()
-		)
+		ConstraintEditor.NetSend( ConstraintEditor.netTags.TOOLGUN_MIDDLE_CLICK, self:GetOwner() )
 	end
 
 	return true

@@ -60,16 +60,18 @@ end
 
 
 -- Returns how many bits are needed to represent the given
-local function getBitCount( number )
-	return math.ceil( math.log( number + 1, 2 ) )
+local function getUIntBitCount( number )
+	return math.max(1, math.ceil( math.log( number + 1, 2 ) ) )
 end
 
 
 ConstraintEditor.netBitCounts = {
-	TAG			= getBitCount( table.Count( ConstraintEditor.netTags ) - 1 ),
-	ENT_ID		= getBitCount( 8192 ), -- up to 8192 entities can exist
-	CREATION_ID	= getBitCount( 10000000 ), -- https://wiki.facepunch.com/gmod/Entity:GetCreationID
+	TAG			= getUIntBitCount( table.Count( ConstraintEditor.netTags ) - 1 ),
+	ENT_ID		= getUIntBitCount( 8192 ), -- Up to 8192 entities can exist. This means indexes probably go up to 8191, but i use 8192 to be safe (even if it's one more bit)
+	CREATION_ID	= getUIntBitCount( 10000000 ), -- https://wiki.facepunch.com/gmod/Entity:GetCreationID
 }
+local BIT_COUNT = ConstraintEditor.netBitCounts
+BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
 
 
 ConstraintEditor.netWriteFuncs = {
@@ -83,9 +85,6 @@ ConstraintEditor.netWriteFuncs = {
 	[TYPE_MATRIX]		= net.WriteMatrix,
 	[TYPE_COLOR]		= net.WriteColor,
 }
-
-
-local BIT_COUNT = ConstraintEditor.netBitCounts
 
 
 
@@ -102,7 +101,7 @@ end
 --	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
 --		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
 --		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
-function ConstraintEditor.NetStartWrite( tag, ... )
+function ConstraintEditor.NetStartWrite( tag )
 
 	if not isnumber( tag ) then return false end
 
@@ -112,32 +111,9 @@ function ConstraintEditor.NetStartWrite( tag, ... )
 
 		net.WriteUInt( tag, BIT_COUNT.TAG )
 
-		ConstraintEditor.NetAdd( ... )
-
 	return true
 
 end
-
-
--- Writes data to the current net message.
--- Note that this does not send or start the message, only writes some data.
---
--- Arguments:
---	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
---		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
---		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
-function ConstraintEditor.NetAdd( ... )
-
-	netDebug( false, true, nil, { ... } )
-
-	for _, tab in ipairs( { ... } ) do
-		local v, arg = tab[1], tab[2]
-		local write = ConstraintEditor.GetNetWriteFunc( v )
-		if write then write( v, arg ) end
-	end
-
-end
-
 
 
 -- Put a constraint creation ID into an appropriate format for the net send functions
@@ -152,36 +128,49 @@ function ConstraintEditor.ToNetConstrID( constrID )
 end
 
 
--- Puts many constraint creation IDs into an appropriate format for the net send functions
+-- Send many constraint creation IDs efficiently
 --
 -- Arguments:
---	constrIDs (table): A table whose keys are constraint creation IDs, and whose values should be boolean (true to include the constraint creation ID to the final result)
---	dontAddCount (boolean): only if true, does not add the number of included constraints
---
--- Returns:
---	(tuple): The unpacked table of constraint IDs:
---		First table, only if addCount (arg) is true, is { how many IDs will be sent, bits for max entity (constraint) count }
---		Consecutive tables are { creation ID of the constraint, maximum bit count for a creation ID }
-function ConstraintEditor.ToNetConstrIDs( constrIDs, dontAddCount )
+--	constrIDs (table): A table whose keys are the constraint creation IDs to send
+--	addCount = true (boolean): Only if true, adds the number of IDs at the start
+function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
+
+	if addCount == nil then addCount = true end
+
+	PrintTable( constrIDs )
+
+	-- theoretically (untested) hits the 64 kB limit at 2664 constraints or so (worst case), and 4919 constraints or so (~ best case, diff of 1 between each constr ID.)
 
 	if not constrIDs then return end
 
-	local tab = {}
+	-- maxConstrID could simply be set to 10 million initially since that's the max value for a creation id
+	local constrCount, minConstrID, maxConstrID = 0, math.huge, 0
 
-	if not dontAddCount then table.insert( tab, { 0, BIT_COUNT.ENT_ID } ) end
-
-	local constrCount = 0
-
-	for constrID, include in pairs( constrIDs ) do
-		if include then
-			table.insert( tab, ConstraintEditor.ToNetConstrID( constrID ) )
-			constrCount = constrCount + 1
-		end
+	for constrID, _ in pairs( constrIDs ) do
+		constrCount = constrCount + 1
+		if constrID < minConstrID then minConstrID = constrID end
+		if constrID > maxConstrID then maxConstrID = constrID end
 	end
 
-	if not dontAddCount then tab[1][1] = constrCount end
+	if constrCount == 0 then return end
 
-	return unpack( tab )
+	local diff			= maxConstrID - minConstrID
+	local diffBitCount	= getUIntBitCount( diff )
+
+	print( constrCount, minConstrID, diffBitCount )
+
+	if addCount then
+		net.WriteUInt( constrCount, BIT_COUNT.ENT_ID )				-- 14 bits
+	end
+
+	net.WriteUInt( minConstrID, BIT_COUNT.CREATION_ID )				-- 24 bits
+	net.WriteUInt( diffBitCount, BIT_COUNT.BIT_COUNT_CREATION_ID )	-- 5 bits
+
+	for constrID, _ in pairs( constrIDs ) do
+		print( constrID - minConstrID )
+		net.WriteUInt( constrID - minConstrID, diffBitCount )
+	end
+
 end
 
 
@@ -193,8 +182,9 @@ function ConstraintEditor.HandleNetRequests()
 		if SERVER and not ( ply and ply:IsPlayer() ) then return end
 
 		local tag = net.ReadUInt( BIT_COUNT.TAG )
-		local data = { ConstraintEditor.netFunctions[tag]( ply ) }
+		ConstraintEditor.netFunctions[tag]( ply )
 
+		-- local data = { ConstraintEditor.netFunctions[tag]( ply ) }
 		--netDebug( true, false, tag, data )
 
 	end )

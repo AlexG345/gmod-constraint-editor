@@ -54,10 +54,10 @@ function PANEL:Init()
 		buttonDuplicate:SetSize( buttonWidth, buttonHeight )
 
 		function buttonDuplicate:DoClick()
-			ConstraintEditor.NetSend(
-				NT.DUPLIC_CONSTRS,
-				ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
-			)
+			if ConstraintEditor.NetStartWrite( NT.DUPLIC_CONSTRS ) then
+				ConstraintEditor.NetWriteConstrIDs( constrBrowser.selectionData.IDs )
+				net.SendToServer()
+			end
 		end
 
 
@@ -69,10 +69,10 @@ function PANEL:Init()
 		buttonDelete:SetSize( buttonWidth, buttonHeight )
 
 		function buttonDelete:DoClick()
-			ConstraintEditor.NetSend(
-				NT.REMOVE_CONSTRS,
-				ConstraintEditor.ToNetConstrIDs( constrBrowser.selectionData.IDs )
-			)
+			if ConstraintEditor.NetStartWrite( NT.REMOVE_CONSTRS ) then
+				ConstraintEditor.NetWriteConstrIDs( constrBrowser.selectionData.IDs )
+				net.SendToServer()
+			end
 		end
 
 	tileLayout:SetBaseSize( buttonHeight )
@@ -148,6 +148,7 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 	local IDs = t.IDs
 
 	local oldFirstID = next( IDs )
+	local oldSelectionDataType = t.dataType
 
 	if elimination then
 		if istable( elimination ) then
@@ -200,8 +201,12 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 		editModeChanged or (
 			( t.editMode == EM.SINGLE ) and
 			( oldFirstID ~= next( IDs ) )
+		) or (
+			( t.editMode == EM.MANY ) and
+			( oldSelectionDataType ~= t.dataType )
 		)
 	)
+	print( "dataNeeded:", dataNeeded)
 
 	return dataNeeded, t.IDs, t.editMode
 
@@ -245,9 +250,11 @@ end
 
 function PANEL:UnregisterConstrs( constrIDs )
 
-	self:SelectIDs( nil, nil, constrIDs )
+	local t = { self:SelectIDs( nil, nil, constrIDs ) }
 
 	self.constraintTree:UnregisterConstrs( constrIDs )
+
+	return unpack( t )
 
 end
 
@@ -273,14 +280,14 @@ function PANEL:UpdateServer()
 	local constrIDs		= self.selectionData.IDs
 	local constrData	= self.constraintEditor:GetEditedValues()
 
-	ConstraintEditor.NetSend(
-		NT.UPDATE_CONSTRS,
-		{ constrData },
-		ConstraintEditor.ToNetConstrIDs( constrIDs )
-	)
+	if ConstraintEditor.NetStartWrite( NT.UPDATE_CONSTRS ) then
+		-- constrData is not sequential because edited values can skip indexes (e.g. the user only edited the properties of id 1 and 4)
+		net.WriteTable( constrData )
+		ConstraintEditor.NetWriteConstrIDs( constrIDs )
+		net.SendToServer()
+	end
 
 	-- TODO: add back constraint type selection?
-	-- ConstraintEditor.NetSend( NT.UPDATE_TYPE,  { constrData }, { constrData.Type } )
 
 end
 

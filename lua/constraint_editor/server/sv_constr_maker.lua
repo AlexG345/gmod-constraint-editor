@@ -691,10 +691,10 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 	local surfaceConstrsData = ConstraintEditor.GetSurfaceConstrsData( constrsReplacements )
 
-	ConstraintEditor.NetSend(
-		NT.REGISTER_CONSTRS, ply,
-		{ surfaceConstrsData }
-	)
+	if ply and ConstraintEditor.NetStartWrite( NT.REGISTER_CONSTRS ) then
+		net.WriteTable( surfaceConstrsData )
+		net.Send( ply )
+	end
 
 	local newConstrs, deletedConstrs = {}, {}
 
@@ -702,10 +702,10 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 		if not ( isentity( newConstr ) and newConstr:IsValid() ) or constr == newConstr then continue end
 
-		ConstraintEditor.RegisterConstr( newConstr )
+		local newConstrID = ConstraintEditor.RegisterConstr( newConstr )
 
 		if setEdited then
-			newConstrs[newConstr:GetCreationID()] = true
+			newConstrs[newConstrID] = true
 		end
 
 
@@ -718,32 +718,23 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 	end
 
-	local t = { ConstraintEditor.ToNetConstrIDs( deletedConstrs ) }
-
-	print( "ReplaceConstrs: deletedConstrs" )
-	PrintTable( deletedConstrs )
-
-	print( "ReplaceConstrs: ConstraintEditor.ToNetConstrIDs( deletedConstrs )" )
-	PrintTable( t )
-
 	if setEdited and isentity( ply ) and ply:IsPlayer() then
 
 		local constrType = next( constrsReplacements ).Type
 
-		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS, ConstraintEditor.ToNetConstrIDs( newConstrs ) ) then
-			ConstraintEditor.NetAdd( { constrType } )
-			ConstraintEditor.NetAdd( unpack( t ) )
+		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS ) then
+			ConstraintEditor.NetWriteConstrIDs( newConstrs )
+			net.WriteString( constrType )
+			ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
 			net.Send( ply )
 		end
 
 	end
 
-	if delete then
-		ConstraintEditor.NetSend(
-			NT.UNREGISTER_CONSTRS, ConstraintEditor.GetEditorPlayers(),
-			unpack( t )
-		)
+	-- TODO: This is obsolete if CallOnRemove has been added?
+	if delete and ConstraintEditor.NetStartWrite( NT.UNREGISTER_CONSTRS ) then
+		ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
+		net.Send( ConstraintEditor.GetEditorPlayers() )
 	end
-
 
 end

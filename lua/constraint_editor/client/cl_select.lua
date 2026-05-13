@@ -14,11 +14,11 @@ local NT = ConstraintEditor.netTags
 --	constrID (int): The constraint creation ID representative of the data we want to get
 --	getDefault (boolean): true only if you want to ask for default data
 function ConstraintEditor.FillConstrEditor( constrID, getDefault )
-	ConstraintEditor.NetSend(
-		NT.FILL_CONSTR_EDITOR,
-		ConstraintEditor.ToNetConstrID( constrID ),
-		{ getDefault }
-	)
+	if ConstraintEditor.NetStartWrite( NT.FILL_CONSTR_EDITOR ) then
+		ConstraintEditor.NetWriteConstrIDs( { [constrID] = true }, false )
+		net.WriteBool( getDefault )
+		net.SendToServer()
+	end
 end
 
 
@@ -26,13 +26,14 @@ end
 -- Arguments:
 --	funcName (string): Name of the function to call on the constraint browser
 --	...: Arguments to pass to the constraint browser function
-local function callSelectFuncOnConstraintBrowser( funcName, ... )
+function ConstraintEditor.CallSelectFuncOnConstraintBrowser( funcName, ... )
 
 	local constrBrowser = ConstraintEditor.GetConstrBrowser()
 	if not constrBrowser then return end
 
 	-- The constraint browser function must return this stuff
 	local dataNeeded, IDs, editMode = constrBrowser[funcName]( constrBrowser, ... )
+	print( dataNeeded, IDs, editMode )
 
 	if not dataNeeded then return end
 
@@ -50,7 +51,7 @@ end
 --		A table whose values are the constraint creation IDs of the constraints that we want to unselect
 --		true to clear the selection entirely
 function ConstraintEditor.SelectConstrs( selection, constrType, elimination )
-	callSelectFuncOnConstraintBrowser( "SelectIDs", selection, constrType, elimination )
+	ConstraintEditor.CallSelectFuncOnConstraintBrowser( "SelectIDs", selection, constrType, elimination )
 end
 
 
@@ -59,7 +60,7 @@ end
 --	selectionDataType (string): The constraint type (e.g. Rope, Weld, ...) shared by the constraints that will end up being toggled on
 --	clearSelection (boolean): true to clear the selection entirely
 function ConstraintEditor.ToggleConstrs( IDsToToggle, constrType, clearSelection )
-	callSelectFuncOnConstraintBrowser( "ToggleIDs", IDsToToggle, constrType, clearSelection )
+	ConstraintEditor.CallSelectFuncOnConstraintBrowser( "ToggleIDs", IDsToToggle, constrType, clearSelection )
 end
 
 
@@ -74,11 +75,9 @@ function ConstraintEditor.SelectEntity( ent, clearSelection )
 		ConstraintEditor.NetSend( ConstraintEditor.netTags.CLEAR_ENTITY_SELECTION )
 	end
 
-	if ent then
-		ConstraintEditor.NetSend(
-			ConstraintEditor.netTags.SELECT_ENTITY,
-			{ ent }
-		)
+	if ent and ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.SELECT_ENTITY ) then
+		net.WriteEntity( ent )
+		net.SendToServer()
 	end
 
 end
@@ -96,11 +95,9 @@ function ConstraintEditor.ToggleEntity( ent, clearSelection )
 		ConstraintEditor.NetSend( ConstraintEditor.netTags.CLEAR_ENTITY_SELECTION )
 	end
 
-	if ent then
-		ConstraintEditor.NetSend(
-			ConstraintEditor.netTags.TOGGLE_ENTITY,
-			{ ent }
-		)
+	if ent and ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOGGLE_ENTITY ) then
+		net.WriteEntity( ent )
+		net.SendToServer()
 	end
 
 end

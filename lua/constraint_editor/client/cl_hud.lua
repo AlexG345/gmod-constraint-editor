@@ -3,7 +3,8 @@ ConstraintEditor.HoveredConstrInfo = { ID = -1, Type = "" } -- for the stool
 
 
 hook.Add( "PreDrawHalos", "AddPropHalos", function()
-	if LocalPlayer():GetActiveWeapon():GetClass() ~= "gmod_tool" or LocalPlayer():GetTool().Mode ~= ConstraintEditor.Mode then return end
+	local weapon = LocalPlayer():GetActiveWeapon()
+	if ( not IsValid(weapon) ) or ( weapon:GetClass() ~= "gmod_tool" ) or ( LocalPlayer():GetTool().Mode ~= ConstraintEditor.Mode ) then return end
 	for col, entities in pairs( ConstraintEditor.Halos ) do
 		halo.Add( entities, col, 3, 3, 5, true, true )
 	end
@@ -36,8 +37,10 @@ local haloColorsWeighted = {
 	}
 }
 
-local boxCol	= Color( 0, 0, 0, 230 )
-
+local boxColors	= {}
+for i = 1,10 do
+	boxColors[i] = Color( 0, 10 * i, 0, 230 )
+end
 
 -- NoCollide is unlisted
 --local constrTypes = { "Axis", "AdvBallsocket", "Ballsocket", "Elastic", "Hydraulic", "Keepupright", "Motor", "Muscle", "Pulley", "Rope", "Slider", "Weld", "Winch", "NoCollide", "Other" }
@@ -50,17 +53,17 @@ for i, constrType in ipairs( constrTypes ) do
 end
 
 
+-- These are ordered from smaller to bigger
+local fonts = {
+	"DefaultSmall", --"DermaDefault",
+	"DermaDefaultBold",
+	"CreditsText",
+	"Trebuchet24"
+}
+
 
 
 function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin )
-
-	-- These are ordered from smaller to bigger
-	local fonts = {
-		"DefaultSmall", --"DermaDefault",
-		"DermaDefaultBold",
-		"CreditsText",
-		"Trebuchet24"
-	}
 
 	local padding = 3
 
@@ -172,10 +175,23 @@ function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin 
 
 	for i, textData in pairs( textDatas ) do
 
-		local pos, str, constrID, col = textData.pos, textData.str, textData.constrID, textData.col or color_white
+		local pos, constrID = textData.pos, textData.constrID
 		local weight = ezData[constrID] and ezData[constrID].weight or 1
+		local b = #boxColors - 1
+		local boxColorIndex = 1 + math.abs( ( textData.overlapNum - b ) % ( 2 * b ) - b )
 
-		draw.WordBox( padding, pos.x, pos.y, str, fonts[weight], boxCol, col, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER )
+		draw.WordBox(
+			padding,
+			pos.x,
+			pos.y,
+			textData.str,
+			fonts[weight],
+			boxColors[boxColorIndex],
+			--boxColors[1 + textData.overlapNum % #boxColors],
+			textData.col or color_white,
+			TEXT_ALIGN_CENTER,
+			TEXT_ALIGN_CENTER
+		)
 
 	end
 
@@ -229,7 +245,7 @@ function prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, con
 
 	for _, data in ipairs( { { ent = ent1, pos = pos1 }, { ent = ent2, pos = pos2 } } ) do
 		if data.ent:IsWorld() then
-			table.insert( textDatas, createTextData( nil, nil, "[World]", padding, data.pos, math.huge, overlaps ) or nil )
+			table.insert( textDatas, createTextData( nil, nil, "[World]", padding, Vector( data.pos ), math.huge, nil ) or nil )
 		end
 	end
 
@@ -239,19 +255,20 @@ end
 
 function createTextData( constrID, constrType, str, padding, pos3D, depth, overlaps )
 
+	if not depth then
+		depth = (pos3D - EyePos()):LengthSqr()
+	end
+
+	local overlapID
+	if overlaps then
+		overlapID = string.format("%s_%s_%s", math.floor( pos3D.x ), math.floor( pos3D.y ), math.floor( pos3D.z ) )
+		overlaps[overlapID] = overlaps[overlapID] and overlaps[overlapID] + 1 or 0
+		-- pos2D.y = pos2D.y + overlaps[overlapID] * 20
+		pos3D.z = pos3D.z - overlaps[overlapID] * (math.sqrt(depth) * 0.035)
+	end
+
 	local pos2D = pos3D:ToScreen()
 	if not pos2D.visible then return end
-
-	if overlaps then
-		local overlapID = string.format("%s_%s_%s", math.floor( pos3D.x ), math.floor( pos3D.y ), math.floor( pos3D.z ) )
-		overlaps[overlapID] = overlaps[overlapID] and overlaps[overlapID] + 1 or 0
-		pos2D.y = pos2D.y + overlaps[overlapID] * 20
-	end
-
-	if not depth then
-		pos3D:Sub(EyePos())
-		depth = pos3D:LengthSqr()
-	end
 
 	return {
 		constrID	= constrID or -1,
@@ -260,6 +277,7 @@ function createTextData( constrID, constrType, str, padding, pos3D, depth, overl
 		padding		= padding or 4,
 		pos			= pos2D,
 		depth		= depth,
+		overlapNum	= overlapID and overlaps[overlapID] or 0
 	}
 
 end

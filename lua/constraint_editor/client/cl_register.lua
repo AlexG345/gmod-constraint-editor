@@ -30,8 +30,9 @@ end
 --	A table whose keys are the constraint creation IDs of the constraints we want to unregister
 function ConstraintEditor.UnregisterConstrs( constrIDs )
 
-	local constrBrowser	= ConstraintEditor.GetConstrBrowser()
-	if IsValid( constrBrowser ) then constrBrowser:UnregisterConstrs( constrIDs ) end
+	-- Because unregistering constraints from the constraint browser can change the selection,
+	-- it is necessary to use the function below which automatically asks the server for new data if needed
+	ConstraintEditor.CallSelectFuncOnConstraintBrowser("UnregisterConstrs", constrIDs)
 
 	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
 		for constrID, _ in pairs( constrIDs ) do

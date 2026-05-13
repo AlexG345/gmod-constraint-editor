@@ -22,9 +22,14 @@ ConstraintEditor.lastTablesCleanup = CurTime()
 -- Stores a constraint by its creation ID so that it can then be quickly accessed
 --
 -- Argument:
---	constr (Entity): The constraint  to be stored
+--	constr (Entity): The constraint to be stored
+--
+-- Returns:
+--	constrID (int): The creation ID of the constraint
 function ConstraintEditor.RegisterConstr( constr )
-	ConstraintEditor.constrs[constr:GetCreationID()] = constr
+	local constrID = constr:GetCreationID()
+	ConstraintEditor.constrs[constrID] = constr
+	return constrID
 end
 
 
@@ -33,7 +38,10 @@ end
 -- Argument:
 --	constrs (table): Table with keys constraint creation IDs and values the associated constraints
 function ConstraintEditor.RegisterConstrs( constrs )
-	table.Merge( ConstraintEditor.constrs, constrs, true )
+	-- table merge would work too
+	for constrID, constr in pairs( constrs ) do
+		ConstraintEditor.constrs[constrID] = constr
+	end
 end
 
 
@@ -67,12 +75,18 @@ function ConstraintEditor.UnregisterConstrIDs( constrIDs )
 		ConstraintEditor.constrs[constrID] = nil
 	end
 
+	print("[debug] Did we unregister constrs?: ", unregistered)
+
 	if not unregistered then return end
 
-	ConstraintEditor.NetSend(
-		NT.UNREGISTER_CONSTRS, ConstraintEditor.GetEditorPlayers(),
-		ConstraintEditor.ToNetConstrIDs( constrIDs )
-	)
+	print("[debug] ... and which constraints were unregistered?:")
+	PrintTable( constrIDs )
+
+	local plys = ConstraintEditor.GetEditorPlayers()
+	if ConstraintEditor.NetStartWrite( NT.UNREGISTER_CONSTRS, plys ) then
+		ConstraintEditor.NetWriteConstrIDs( constrIDs )
+		net.Send( plys )
+	end
 
 end
 
@@ -109,10 +123,10 @@ function ConstraintEditor.RegisterEditedEntity( ent, ply )
 
 	ConstraintEditor.RegisterConstrs( constrs )
 
-	ConstraintEditor.NetSend(
-		NT.REGISTER_CONSTRS, ply,
-		{ surfaceConstrsData }
-	)
+	if ConstraintEditor.NetStartWrite( NT.REGISTER_CONSTRS, ply ) then
+		net.WriteTable( surfaceConstrsData )
+		net.Send( ply )
+	end
 
 	local tool = ConstraintEditor.GetTool( ply )
 	if tool then tool:SetStage( 1 ) end
@@ -135,7 +149,7 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 
 	ConstraintEditor.UnregisterConstrs( unsharedConstrs )
 
-	--[[
+	--[[ TODO: check what this was used for.. i forgot, and it's broken now anyways
 	ConstraintEditor.NetSend(
 		NT.UNREGISTER_CONSTRS, ply,
 		ConstraintEditor.ToNetConstrIDs( surfaceConstrsData )
@@ -168,9 +182,7 @@ function ConstraintEditor.UnregisterAllEditedEntities( ply )
 
 	ConstraintEditor.editedEnts[ply] = nil
 
-	ConstraintEditor.NetSend(
-		NT.UNREGISTER_ALL_CONSTRS, ply
-	)
+	ConstraintEditor.NetSend( NT.UNREGISTER_ALL_CONSTRS, ply )
 
 	local tool = ConstraintEditor.GetTool( ply )
 	if tool then tool:SetStage( 0 ) end

@@ -7,12 +7,14 @@ local NT = ConstraintEditor.netTags
 local BIT_COUNT = ConstraintEditor.netBitCounts
 
 
-function ConstraintEditor.NetSend( tag, ... )
-
-	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
-
-	net.SendToServer()
-
+-- Simply send a net tag to the server
+--
+-- Arguments:
+--	tag (int): a net tag, should be from the netTags table
+function ConstraintEditor.NetSend( tag )
+	if ConstraintEditor.NetStartWrite( tag ) then
+		net.SendToServer()
+	end
 end
 
 
@@ -30,12 +32,14 @@ end
 
 local function getNetConstrIDs( constrCount )
 
-	constrCount		= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
+	constrCount			= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
+	local minConstrID	= net.ReadUInt( BIT_COUNT.CREATION_ID )
+	local diffBitCount	= net.ReadUInt( BIT_COUNT.BIT_COUNT_CREATION_ID )
+
 	local constrIDs	= {}
-	local bit_count	= BIT_COUNT.CREATION_ID
 
 	for i = 1, constrCount do
-		local constrID = net.ReadUInt( bit_count )
+		local constrID = minConstrID + net.ReadUInt( diffBitCount )
 		constrIDs[constrID] = constrID
 	end
 
@@ -69,10 +73,10 @@ ConstraintEditor.netFunctions = {
 		local constrHovered, constrID = isHoveringConstr()
 
 		if constrHovered then
-			ConstraintEditor.NetSend(
-				NT.REMOVE_CONSTRS,
-				ConstraintEditor.ToNetConstrIDs( { [constrID] = true } )
-			)
+			if ConstraintEditor.NetStartWrite( NT.REMOVE_CONSTRS ) then
+				ConstraintEditor.NetWriteConstrIDs( { [constrID] = true } )
+				net.SendToServer()
+			end
 		else
 			ConstraintEditor.SelectEntity( nil, true )
 		end
@@ -88,17 +92,17 @@ ConstraintEditor.netFunctions = {
 
 		if constrIDs and next( constrIDs ) ~= nil then
 			-- Transfer the selected constraints of the selected entities (except ent) to ent
-			ConstraintEditor.NetSend(
-				NT.TRANSFER_CONSTRS,
-				ConstraintEditor.ToNetConstrIDs( constrIDs ),
-				{ ent }
-			)
+			if ConstraintEditor.NetStartWrite( NT.TRANSFER_CONSTRS ) then
+				ConstraintEditor.NetWriteConstrIDs( constrIDs )
+				net.WriteEntity( ent )
+				net.SendToServer()
+			end
 		else
 			-- Transfer all the constraints of the selected entities (except ent) to ent
-			ConstraintEditor.NetSend(
-				NT.TRANSFER_ALL_CONSTRS,
-				{ ent }
-			)
+			if ConstraintEditor.NetStartWrite( NT.TRANSFER_ALL_CONSTRS ) then
+				net.WriteEntity( ent )
+				net.SendToServer()
+			end
 		end
 
 	end,

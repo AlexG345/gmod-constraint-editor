@@ -10,30 +10,35 @@ local NT				= ConstraintEditor.netTags
 local BIT_COUNT			= ConstraintEditor.netBitCounts
 
 
-function ConstraintEditor.NetSend( tag, targets, ... )
+function ConstraintEditor.NetTargetIsValid( tar )
 
-	local t = TypeID( targets )
+	local t = TypeID( tar )
 
-	if not (
-		(
-			( t == TYPE_ENTITY and targets:IsPlayer() ) or
-			( t == TYPE_TABLE ) or
-			( t == TYPE_RECIPIENTFILTER )
-		) and
-		ConstraintEditor.NetStartWrite( tag, ... )
-	) then return end
-
-	net.Send( { Entity(1) } )
+	return (
+		( t == TYPE_ENTITY and tar:IsPlayer() ) or
+		( t == TYPE_TABLE ) or
+		( t == TYPE_RECIPIENTFILTER )
+	)
 
 end
 
 
-function ConstraintEditor.NetBroadcast( tag, ... )
+-- original function is from sh_net.lua
+local oNetStartWrite = ConstraintEditor.NetStartWrite
+function ConstraintEditor.NetStartWrite( tag, tar )
+	return ConstraintEditor.NetTargetIsValid( tar ) and oNetStartWrite( tag )
+end
 
-	if not ConstraintEditor.NetStartWrite( tag, ... ) then return end
 
-	net.Broadcast()
-
+-- Simply send a net tag to some client(s)
+--
+-- Arguments:
+--	tag (int): a net tag, should be from the netTags table
+--	tar: target client(s)
+function ConstraintEditor.NetSend( tag, tar )
+	if ConstraintEditor.NetStartWrite( tag, tar ) then
+		net.Send( tar )
+	end
 end
 
 
@@ -60,26 +65,33 @@ function ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 
 	if tool then tool:SetStage( 2 ) end
 
-	ConstraintEditor.NetSend(
-		NT.FILL_CONSTR_EDITOR, ply,
-		{ { constrData, desc.Args } }
-	)
-
+	if ConstraintEditor.NetStartWrite( NT.FILL_CONSTR_EDITOR, ply ) then
+		net.WriteTable( { constrData, desc.Args } )
+		net.Send( ply )
+	end
 end
 
 
 local function getNetConstrs( ply, constrCount )
 
-	constrCount				= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
-	local validConstrCount	= 0
-	local constrs			= {}
-	local bit_count			= BIT_COUNT.CREATION_ID
+	constrCount			= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
+	local minConstrID	= net.ReadUInt( BIT_COUNT.CREATION_ID )
+	local diffBitCount	= net.ReadUInt( BIT_COUNT.BIT_COUNT_CREATION_ID )
 
-	local badConstrIDs = {}
+	local validConstrCount	= 0
+	local validConstrs		= {}
+
+	local badConstrIDs	= {}
+
+	print("constrCount", constrCount)
+	print("minConstrID: ", minConstrID)
+	print("diffBitCount: ", diffBitCount)
 
 	for i = 1, constrCount do
 
-		local constrID = net.ReadUInt( bit_count )
+		local i = net.ReadUInt( diffBitCount )
+		print("i: ", i)
+		local constrID = minConstrID + i
 
 		-- safety check
 		local constr = ConstraintEditor.AccessConstraint( ply, ConstraintEditor.GetConstr( constrID ) )
@@ -88,16 +100,25 @@ local function getNetConstrs( ply, constrCount )
 			badConstrIDs[constrID] = true
 		else
 			validConstrCount = validConstrCount + 1
-			table.insert( constrs, constr )
-		end
-
-		if validConstrCount < constrCount then
-			ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
+			table.insert( validConstrs, constr )
 		end
 
 	end
 
-	return constrs, validConstrCount
+	if validConstrCount < constrCount then
+		ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
+	end
+
+	print("")
+	print("[debug] getNetConstrs")
+	MsgC( Color( 0, 255, 0 ), "\tValid constraints:\n" )
+	PrintTable( validConstrs )
+	print("")
+	MsgC( Color( 255, 0, 0 ), "\tInvalid constraints:\n" )
+	PrintTable( badConstrIDs )
+	print("")
+
+	return validConstrs, validConstrCount
 end
 
 
@@ -141,6 +162,9 @@ ConstraintEditor.netFunctions = {
 	[NT.REMOVE_CONSTRS] = function( ply )
 
 		local constrs = getNetConstrs( ply )
+
+		print("[debug] remove constrs, good constrs found:")
+		PrintTable(constrs)
 
 		ConstraintEditor.DeleteConstrs( constrs )
 
