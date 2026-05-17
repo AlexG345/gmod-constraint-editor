@@ -2,20 +2,21 @@ ConstraintEditor.netTags = {
 	CLEAR_ENTITY_SELECTION	= 0,
 	SELECT_ENTITY			= 1,
 	TOGGLE_ENTITY			= 2,
-	TOOLGUN_LEFT_CLICK		= 3,
-	TOOLGUN_RIGHT_CLICK		= 4,
-	TOOLGUN_MIDDLE_CLICK	= 5,
-	UPDATE_CONSTRS			= 6,
-	REMOVE_CONSTRS			= 7,
-	DUPLIC_CONSTRS			= 8,
-	UNREGISTER_ALL_CONSTRS	= 9,
-	REGISTER_CONSTRS		= 10,
-	FILL_CONSTR_EDITOR		= 11,
-	CLEAR_EDITOR_DATA		= 12,
-	SELECT_CONSTRS			= 13,
-	UNREGISTER_CONSTRS		= 14,
-	TRANSFER_CONSTRS		= 15,
-	TRANSFER_ALL_CONSTRS	= 16,
+	IGNORE_ENTITY			= 3,
+	TOOLGUN_LEFT_CLICK		= 4,
+	TOOLGUN_RIGHT_CLICK		= 5,
+	TOOLGUN_MIDDLE_CLICK	= 6,
+	UPDATE_CONSTRS			= 7,
+	REMOVE_CONSTRS			= 8,
+	DUPLIC_CONSTRS			= 9,
+	UNREGISTER_ALL_CONSTRS	= 10,
+	REGISTER_CONSTRS		= 11,
+	FILL_CONSTR_EDITOR		= 12,
+	CLEAR_EDITOR_DATA		= 13,
+	SELECT_CONSTRS			= 14,
+	UNREGISTER_CONSTRS		= 15,
+	TRANSFER_CONSTRS		= 16,
+	TRANSFER_ALL_CONSTRS	= 17,
 }
 
 
@@ -65,37 +66,9 @@ local BIT_COUNT = ConstraintEditor.netBitCounts
 BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
 
 
-ConstraintEditor.netWriteFuncs = {
-	[TYPE_NIL]			= function() end,
-	[TYPE_STRING]		= net.WriteString,
-	[TYPE_NUMBER]		= net.WriteDouble,
-	[TYPE_TABLE]		= ConstraintEditor.NetWriteTable,
-	[TYPE_BOOL]			= net.WriteBool,
-	[TYPE_ENTITY]		= net.WriteEntity,
-	[TYPE_VECTOR]		= ConstraintEditor.NetWritePreciseVector,
-	[TYPE_ANGLE]		= net.WriteAngle,
-	[TYPE_MATRIX]		= net.WriteMatrix,
-	[TYPE_COLOR]		= net.WriteColor,
-}
-
-
-ConstraintEditor.netReadFuncs = {
-	[TYPE_NIL]			= function() end,
-	[TYPE_STRING]		= net.ReadString,
-	[TYPE_NUMBER]		= net.ReadDouble,
-	[TYPE_TABLE]		= ConstraintEditor.NetReadTable,
-	[TYPE_BOOL]			= net.ReadBool,
-	[TYPE_ENTITY]		= net.ReadEntity,
-	[TYPE_VECTOR]		= ConstraintEditor.NetReadPreciseVector,
-	[TYPE_ANGLE]		= net.ReadAngle,
-	[TYPE_MATRIX]		= net.ReadMatrix,
-	[TYPE_COLOR]		= net.ReadColor,
-}
-
-
 local function netWriteType( v )
-	print("write: ", v)
 	local t = TypeID( v )
+	print("write: ", v, t, ConstraintEditor.netWriteFuncs[t] )
 	net.WriteUInt( t, 8 )
 	ConstraintEditor.netWriteFuncs[t]( v )
 end
@@ -260,3 +233,31 @@ function ConstraintEditor.HandleNetRequests()
 	end )
 
 end
+
+
+ConstraintEditor.netWriteFuncs = {
+	[TYPE_NIL]			= function() end,
+	[TYPE_STRING]		= net.WriteString,
+	[TYPE_NUMBER]		= net.WriteDouble,
+	[TYPE_TABLE]		= ConstraintEditor.NetWriteTable,
+	[TYPE_BOOL]			= net.WriteBool,
+	[TYPE_ENTITY]		= net.WriteEntity,
+	[TYPE_VECTOR]		= ConstraintEditor.NetWritePreciseVector,
+	[TYPE_ANGLE]		= net.WriteAngle,
+	[TYPE_MATRIX]		= net.WriteMatrix,
+	[TYPE_COLOR]		= net.WriteColor,
+}
+
+
+ConstraintEditor.netReadFuncs = {
+	[TYPE_NIL]			= function() end,
+	[TYPE_STRING]		= net.ReadString,
+	[TYPE_NUMBER]		= net.ReadDouble,
+	[TYPE_TABLE]		= ConstraintEditor.NetReadTable,
+	[TYPE_BOOL]			= net.ReadBool,
+	[TYPE_ENTITY]		= net.ReadEntity,
+	[TYPE_VECTOR]		= ConstraintEditor.NetReadPreciseVector,
+	[TYPE_ANGLE]		= net.ReadAngle,
+	[TYPE_MATRIX]		= net.ReadMatrix,
+	[TYPE_COLOR]		= net.ReadColor,
+}

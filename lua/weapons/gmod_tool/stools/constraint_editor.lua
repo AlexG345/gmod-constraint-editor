@@ -17,14 +17,17 @@ if CLIENT then
 	TOOL.Name		= "Constraint Editor"
 
 	TOOL.Information = {
-		{ name = "left0", stage = 0 },
-		{ name = "left", stage = 1 },
-		{ name = "left", stage = 2 },
-		{ name = "shift", icon = "icon16/arrow_up.png" },
-		{ name = "right", stage = 1 },
-		{ name = "right", stage = 2 },
-		{ name = "reload1", stage = 1 },
-		{ name = "reload2", stage = 2 },
+		{ name = "left0",		stage = 0 },
+		{ name = "left",		stage = 1 },
+		{ name = "left",		stage = 2 },
+		{ name = "left_shift",	stage = 1,	icon2 = "icon16/arrow_up.png",	icon = "gui/lmb.png" },
+		{ name = "left_shift",	stage = 2,	icon2 = "icon16/arrow_up.png",	icon = "gui/lmb.png" },
+		{ name = "right",		stage = 1 },
+		{ name = "right",		stage = 2 },
+		{ name = "right_shift",	stage = 1,	icon2 = "icon16/arrow_up.png",	icon = "gui/rmb.png" },
+		{ name = "right_shift",	stage = 2,	icon2 = "icon16/arrow_up.png",	icon = "gui/rmb.png" },
+		{ name = "reload1",		stage = 1 },
+		{ name = "reload2",		stage = 2 },
 		--{ name = "reload1_use", stage = 1 },
 		--{ name = "reload2_use", stage = 2 },
 	}
@@ -48,10 +51,12 @@ if CLIENT then
 	l( "name", TOOL.Name )
 	l( "desc", "Edit any constraint." )
 	l( "0" )
-	l( "left0", "SELECT an entity to see its constraints" )
-	l( "left", "SELECT constraints and/or other entities" )
-	l( "shift", "Press " .. ( input.LookupBinding( "+speed" ) or "Sprint" ) .. " to not clear selection on left click" )
-	l( "right", "DELETE the constraint you're facing, or CLEAR your entity selection" )
+	l( "left0", "Select an entity, letting you see its constraints" )
+	l( "left", "Set selection to a single constraint/entity" )
+	l( "left_shift", ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Expand your constraint/entity selection" )
+	-- l( "shift", "Press " .. ( input.LookupBinding( "+speed" ) or "Sprint" ) .. " to not clear selection on left click" )
+	l( "right", "Delete the constraint you're looking at, or clear your selection" )
+	l( "right_shift", ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Stop viewing all constraints of the entity you're looking at" )
 	l( "reload1", "TRANSFER all constraints from your entity selection to the entity you're looking at" )
 	l( "reload2", "TRANSFER selected constraint(s) to the entity you're looking at" )
 	--l( "reload1_use", "Transfer all constraints from the edited entity to the one you're looking at" )
@@ -83,7 +88,12 @@ function TOOL:RightClick( trace )
 
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.NetSend( ConstraintEditor.netTags.TOOLGUN_RIGHT_CLICK, self:GetOwner() )
+
+		local ply = self:GetOwner()
+		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_RIGHT_CLICK, ply ) then
+			net.WriteEntity( trace.Entity )
+			net.Send( ply )
+		end
 	end
 
 	return true

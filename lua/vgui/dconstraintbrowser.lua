@@ -36,9 +36,8 @@ function PANEL:Init()
 	tileLayout:Dock( BOTTOM )
 
 		local buttonApply	= tileLayout:Add( "DButton" )
-		-- "icon16/database_refresh.png"
-		-- "icon16/server_go.png"
-		buttonApply:SetImage( "icon16/link_go.png" )
+
+		buttonApply:SetImage( "icon16/table_go.png"  )
 		buttonApply:SetText( "Update Constraints" )
 		buttonApply:SetSize( buttonWidth, buttonHeight )
 
@@ -48,8 +47,8 @@ function PANEL:Init()
 
 
 		local buttonDuplicate	= tileLayout:Add( "DButton")
-		-- "icon16/application_double.png"
-		buttonDuplicate:SetImage( "icon16/link_add.png" )
+
+		buttonDuplicate:SetImage( "icon16/table_multiple.png" )
 		buttonDuplicate:SetText( "Duplicate Constraints" )
 		buttonDuplicate:SetSize( buttonWidth, buttonHeight )
 
@@ -62,9 +61,8 @@ function PANEL:Init()
 
 
 		local buttonDelete	= tileLayout:Add( "DButton" )
-		-- "icon16/database_delete.png"
-		-- "icon16/server_delete.png"
-		buttonDelete:SetImage( "icon16/link_delete.png" )
+
+		buttonDelete:SetImage( "icon16/table_delete.png" )
 		buttonDelete:SetText( "Delete Constraints" )
 		buttonDelete:SetSize( buttonWidth, buttonHeight )
 

@@ -83,11 +83,9 @@ local function getNetConstrs( ply, constrCount )
 
 	local badConstrIDs	= {}
 
-	for i = 1, constrCount do
+	for _ = 1, constrCount do
 
-		local i = net.ReadUInt( diffBitCount )
-		print("i: ", i)
-		local constrID = minConstrID + i
+		local constrID	= minConstrID + net.ReadUInt( diffBitCount )
 
 		-- safety check
 		local constr = ConstraintEditor.AccessConstraint( ply, ConstraintEditor.GetConstr( constrID ) )
@@ -138,6 +136,18 @@ ConstraintEditor.netFunctions = {
 
 		local ent = net.ReadEntity()
 		ConstraintEditor.ToggleEditedEntity( ent, ply )
+
+		return ent
+
+	end,
+
+	[NT.IGNORE_ENTITY] = function( ply )
+
+		local ent = net.ReadEntity()
+		ConstraintEditor.UnregisterConstrs( constraint.GetTable( ent ), ply )
+		local t = ConstraintEditor.editedEnts
+		if ( t[ply] and t[ply][ent] ) then t[ply][ent] = nil end
+		ConstraintEditor.FindAndSetProperToolStage( ply )
 
 		return ent
 

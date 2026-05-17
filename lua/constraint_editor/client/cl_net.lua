@@ -38,7 +38,7 @@ local function getNetConstrIDs( constrCount )
 
 	local constrIDs	= {}
 
-	for i = 1, constrCount do
+	for _ = 1, constrCount do
 		local constrID = minConstrID + net.ReadUInt( diffBitCount )
 		constrIDs[constrID] = constrID
 	end
@@ -70,9 +70,12 @@ ConstraintEditor.netFunctions = {
 
 	[NT.TOOLGUN_RIGHT_CLICK] = function()
 
+		local ent = net.ReadEntity()
 		local constrHovered, constrID = isHoveringConstr()
 
-		if constrHovered then
+		if LocalPlayer():KeyDown( IN_SPEED ) then
+			ConstraintEditor.IgnoreEntity( ent )
+		elseif constrHovered then
 			if ConstraintEditor.NetStartWrite( NT.REMOVE_CONSTRS ) then
 				ConstraintEditor.NetWriteConstrIDs( { [constrID] = true } )
 				net.SendToServer()
@@ -132,11 +135,12 @@ ConstraintEditor.netFunctions = {
 
 	[NT.FILL_CONSTR_EDITOR] = function()
 
-		local data = ConstraintEditor.NetReadTable()
-		local constrEditor = ConstraintEditor.GetConstrEditor()
+		local data			= ConstraintEditor.NetReadTable()
+		local constrBrowser = ConstraintEditor.GetConstrBrowser()
+		local constrEditor	= ConstraintEditor.GetConstrEditor()
 
 		if data and IsValid( constrEditor ) then
-			constrEditor:Fill( { values = data[1], args = data[2] } )
+			constrEditor:Fill( { values = data[1], args = data[2] }, constrBrowser.selectionData.dataType )
 		end
 
 		return data

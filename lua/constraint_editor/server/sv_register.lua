@@ -54,11 +54,12 @@ function ConstraintEditor.RegisterConstrs( constrs )
 end
 
 
--- Forgets all data related to some constraints
+-- Make some clients (optionally all) forget data related to some constraints
 --
 -- Argument:
 --	constrs (table): Table whose values are the constraints we want to unregister
-function ConstraintEditor.UnregisterConstrs( constrs )
+--	plys (Entity | table | CRecipientFilter | nil): Those who are affected by the unregister. If nil, all players are affected.
+function ConstraintEditor.UnregisterConstrs( constrs, plys )
 
 	local constrIDs = {}
 	for _, constr in pairs( constrs ) do
@@ -71,27 +72,23 @@ end
 
 
 
--- Forgets all data related to some constraints using their creation IDs
+-- Make some clients (optionally all) forget data related to some constraints using their creation IDs
 --
 -- Argument:
 --	constrIDs (table): Table whose keys are the constraint creation IDs we want to forget (if the associated value is not false)
-function ConstraintEditor.UnregisterConstrIDs( constrIDs )
+--	plys (Entity | table | CRecipientFilter | nil): Those who are affected by the unregister. If nil, all players are affected.
+function ConstraintEditor.UnregisterConstrIDs( constrIDs, plys )
 
-	local unregistered = false
-
-	for constrID, _ in pairs( constrIDs ) do
-		unregistered = true
-		ConstraintEditor.constrs[constrID] = nil
-	end
-
-	print("[debug] Did we unregister constrs?: ", unregistered)
-
+	local unregistered = next( constrIDs ) ~= nil
 	if not unregistered then return end
 
-	print("[debug] ... and which constraints were unregistered?:")
-	PrintTable( constrIDs )
+	if not plys then
+		for constrID, _ in pairs( constrIDs ) do
+			ConstraintEditor.constrs[constrID] = nil
+		end
+	end
 
-	local plys = ConstraintEditor.GetEditorPlayers()
+	plys = plys or ConstraintEditor.GetEditorPlayers()
 	if ConstraintEditor.NetStartWrite( NT.UNREGISTER_CONSTRS, plys ) then
 		ConstraintEditor.NetWriteConstrIDs( constrIDs )
 		net.Send( plys )
@@ -156,12 +153,9 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	print("unsharedConstrs:", unsharedConstrs)
 	PrintTable( unsharedConstrs )
 
-	ConstraintEditor.UnregisterConstrs( unsharedConstrs )
+	ConstraintEditor.UnregisterConstrs( unsharedConstrs, ply )
 
-	if next( t[ply] ) == nil then
-		local tool = ConstraintEditor.GetTool( ply )
-		if tool then tool:SetStage( 0 ) end
-	end
+	ConstraintEditor.FindAndSetProperToolStage( ply )
 
 end
 
@@ -202,31 +196,14 @@ function ConstraintEditor.GetEditorPlayers()
 end
 
 
--- Forgets constrIDs:
---		that have no related data
--- 		whose associated constraint is not valid (e.g. has been removed)
--- 		that have no player permissions
--- Also clears EditedEnts if player or entity is invalid
+-- Clears EditedEnts if player or entity is invalid
 function ConstraintEditor.CleanupTables()
 
 	ConstraintEditor.lastTablesCleanup = CurTime()
 
-	local badConstrIDs = {}
-
-	for constrID, ent in pairs( ConstraintEditor.constrs ) do
-		if not IsValid( ent ) then
-			badConstrIDs[constrID] = true
-		end
-	end
-
-	if next( badConstrIDs ) ~= nil then
-		ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
-	end
-
-
 	for ply, entities in pairs( ConstraintEditor.editedEnts ) do
 		if not IsValid( ply ) then
-			ConstraintEditor.ClearAccess( ply )
+			ConstraintEditor.editedEnts[ply] = nil
 		else
 			for ent in pairs( entities ) do
 				if not IsValid( ent ) then

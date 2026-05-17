@@ -21,6 +21,18 @@ function ConstraintEditor.DeleteConstrs( constrs )
 		SafeRemoveEntity( constr )
 	end
 
-	ConstraintEditor.UnregisterConstrs( constrs )
+end
+
+
+-- This does not handle all cases, far from it
+function ConstraintEditor.FindAndSetProperToolStage( ply )
+
+	local tool = ConstraintEditor.GetTool( ply )
+	if not tool then return end
+
+	local t = ConstraintEditor.editedEnts
+	if ( not t[ply] ) or next( t[ply] ) == nil then
+		tool:SetStage( 0 )
+	end
 
 end

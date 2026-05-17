@@ -83,6 +83,16 @@ function ConstraintEditor.SelectEntity( ent, clearSelection )
 end
 
 
+function ConstraintEditor.IgnoreEntity( ent )
+
+	if ent and ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.IGNORE_ENTITY ) then
+		net.WriteEntity( ent )
+		net.SendToServer()
+	end
+
+end
+
+
 -- Toggle an entity, optionally unselecting all previous ones. This impacts which constraints are shown in the constraint browser.
 -- Toggle means that if the entity is selected, it'll be unselected, and vice versa.
 --

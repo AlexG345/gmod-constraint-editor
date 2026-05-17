@@ -157,10 +157,11 @@ end
 --	properties (table): Table containing:
 --		values (table): The properties' values for the rows (should use the same keys as self.rows)
 --		args (table): The properties' names for the rows (should use the same keys as self.rows)
-function PANEL:CreateRows( properties )
+--	dataType (string): Text representing what we're editing, only for visual purpose
+function PANEL:CreateRows( properties, dataType )
 
 	--local rowName = self.editMode == ConstraintEditor.EditModes.SINGLE and "Constraint Properties - Individual edit" or "Constraint Properties - Batch edit"
-	local rowName	= "Constraint Properties"
+	local rowName	= ( dataType or "Constraint" ) .. " Properties"
 	local values	= properties.values
 	local args		= properties.args
 
@@ -222,15 +223,21 @@ function PANEL:CreateRows( properties )
 
 			--row:SetValue( value, true, true )
 
-			if rowType == "Entity" then
+			local isEntity	= rowType == "Entity"
+			local isBone	= ( not isEntity ) and ( rowType == "number" and string.find( arg, "Bone" ) )
+
+			if isEntity or isBone then
+
+				local strings	= isEntity and { "Entity", "entity" } or isBone and { "PhysicsBone", "physics bone" }
+				local key, text	= strings[1], strings[2]
 
 				local buttonSwitch = row:Add( "DButton" )
 
 					row.Button = buttonSwitch
 
 					buttonSwitch:SetImage( "icon16/eye.png" )
-					buttonSwitch:SetText( "Switch entity" )
-					buttonSwitch:SetTooltip( "Switch this entity to the one you're looking at." )
+					buttonSwitch:SetText( "Switch " .. text )
+					buttonSwitch:SetTooltip( "Switch this " .. text .. " to the one you're looking at." )
 
 					buttonSwitch:DockMargin(0, 1, 1, 1)
 					buttonSwitch:Dock(RIGHT)
@@ -238,7 +245,7 @@ function PANEL:CreateRows( properties )
 					buttonSwitch:SetSize( 2 * height, height )
 
 					function buttonSwitch:DoClick()
-						row:SetValue( LocalPlayer():GetEyeTrace().Entity, true, true )
+						row:SetValue( LocalPlayer():GetEyeTrace()[key], true, true )
 					end
 
 					local oldPL = row.PerformLayout
@@ -295,11 +302,12 @@ end
 --	properties (table): Table containing:
 --		values (table): The properties' values for the rows
 --		args (table): The properties' names for the rows
-function PANEL:Fill( properties )
+--	dataType (string): Text representing what we're editing, only for visual purpose
+function PANEL:Fill( properties, dataType )
 
 	self:Clear()
 
-	self:CreateRows( properties )
+	self:CreateRows( properties, dataType )
 
 	local b = self.cacheComparing
 	self:EnableCacheComparing( true )

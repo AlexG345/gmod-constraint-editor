@@ -26,7 +26,7 @@
 --	constrType (string | nil): The constraint type represented by v (arg).
 function ConstraintEditor.GetConstrDescriptor( v )
 
-	local constrType = isstring( v ) and thing or ( istable( v ) or isentity( v ) ) and v.Type
+	local constrType = isstring( v ) and v or ( istable( v ) or isentity( v ) ) and v.Type
 	local desc = duplicator.ConstraintType[constrType]
 	if desc then return desc, constrType end
 
@@ -232,9 +232,11 @@ function ConstraintEditor.CompleteConstrData( refConstrData, constrData, desc, p
 
 	for i, arg in ipairs( desc.Args ) do
 
-		if constrData[arg] == nil then constrData[arg] = refConstrData[arg] end
-
 		local val = constrData[arg]
+		if val == nil then
+			val = refConstrData[arg]
+			constrData[arg] = val
+		end
 
 		-- Without this, sliders get deleted if they are constrained to the world.
 		if isentity( val ) and isfunction( val.GetClass ) and val:GetClass() == "gmod_anchor" then
@@ -338,18 +340,23 @@ end
 --	constrData (table): Constraint data that must use string keys
 --
 -- Returns:
---	entKeys (table): a table that contains:
+--	entKeys (table): a sequential table that contains:
 --		the key of the first entity the constraint is linked to
 --		the key of the second entity the constraint is linked to
---	posKeys (table): a table that contains:
+--	posKeys (table): a sequential table that contains:
 --		a table containing the keys of the positions that are local to the first entity
 --		a table containing the keys of the positions that are local to the second entity
-function ConstraintEditor.GetConstrEntPosKeys( constrData )
+function ConstraintEditor.GetConstrEntBonePosKeys( constrData )
 	local ent1, ent2, ent4 = constrData.Ent1, constrData.Ent2, constrData.Ent4
+	local bone, bone1, bone2, bone4 = constrData.Bone, constrData.Bone1, constrData.Bone2, constrData.Bone4
 	local LPos1, LPos2, LPos4, LPos, LocalAxis = constrData.LPos1, constrData.LPos2, constrData.LPos4, constrData.LPos, constrData.LocalAxis
 	local entKeys = {
 		ent1 and "Ent1" or nil,
 		ent2 and "Ent2" or ent4 and "Ent4" or nil
+	}
+	local boneKeys = {
+		bone and "Bone" or bone1 and "Bone1" or nil,
+		bone2 and "Bone2" or bone4 and "Bone4" or nil
 	}
 	local posKeys = {
 		{
@@ -361,5 +368,5 @@ function ConstraintEditor.GetConstrEntPosKeys( constrData )
 		}
 	}
 
-	return entKeys, posKeys
+	return entKeys, boneKeys, posKeys
 end

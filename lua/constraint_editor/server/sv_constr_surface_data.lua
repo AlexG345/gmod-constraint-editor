@@ -106,8 +106,6 @@ end
 
 
 
-
-
 -- Gets the surface constraint data associated with the given constraint
 --
 -- Arguments:
