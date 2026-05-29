@@ -208,7 +208,7 @@ ConstraintEditor.netFunctions = {
 
 		ConstraintEditor.FillEditorWithConstr( nil, ply )
 		-- try transferring and stop once it's done once? (for k ,v ... do if change then return end end)
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, false )
 
 		return newEnt, constrs
 
@@ -226,7 +226,7 @@ ConstraintEditor.netFunctions = {
 		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts )
 
 		ConstraintEditor.FillEditorWithConstr( nil, ply )
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, true )
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, false )
 
 
 		return newEnt

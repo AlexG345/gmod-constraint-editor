@@ -101,11 +101,15 @@ function TOOL:RightClick( trace )
 end
 
 
-function TOOL:Reload()
+function TOOL:Reload( trace )
 
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
-		ConstraintEditor.NetSend( ConstraintEditor.netTags.TOOLGUN_MIDDLE_CLICK, self:GetOwner() )
+		local ply = self:GetOwner()
+		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_MIDDLE_CLICK, ply ) then
+			net.WriteEntity( trace.Entity )
+			net.Send( ply )
+		end
 	end
 
 	return true

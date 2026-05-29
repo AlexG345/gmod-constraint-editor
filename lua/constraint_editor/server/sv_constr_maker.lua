@@ -154,10 +154,15 @@ local function LocalToWorldConstrData( constrData, overwrite )
 	local entities = {}
 	local world = game.GetWorld()
 
+	print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
 	for i, entKey in pairs( entKeys ) do
 
 		local ent = constrData[entKey]
 		table.insert( entities, ent )
+
+		print("made to world: ", ent, "->", world)
+
 		if ent:IsWorld() then continue end
 
 		worldConstrData[entKey] = world
@@ -464,14 +469,14 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or replacedEnt == newEnt then return false end
 
+	print("keep going: ", replacedEnt, "->", newEnt)
+
 	constrData[replacedEntKey] = replacedEnt
 
 	local otherEntIndex = 1 + replacedEntIndex % 2
 	local otherEnt		= constrData[entKeys[otherEntIndex]] or game.GetWorld()
 
 	local objectsInfo	= applyInfoFromConstrCreationTime( BuildDupeInfo, constrData, entKeys, otherEntIndex )
-	PrintTable( objectsInfo )
-	print(otherEnt)
 
 	local localObjectsInfo = {}
 
@@ -487,6 +492,11 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	-- Attach the constraint positions to newEnt
 	LocalToWorldConstrData( constrData, true )
+
+	print("restoreConstrLocalBehaviorAfterEntChange debug [S]")
+	PrintTable(constrData)
+	print("restoreConstrLocalBehaviorAfterEntChange debug [E]")
+
 	WorldToLocalConstrData( constrData, { newEnt, newEnt }, true )
 
 	if not ( otherEnt:IsWorld() or BuildDupeInfo ) then
@@ -511,7 +521,7 @@ end
 
 -- Attempts to modify data so that a new constraint created using constrData preserves a certain behavior despite having changed entities:
 --	with transferMode set to 1: Behavior preservation in World coordinates
---	with transferMode set to 2: Behavior preservation between replacedEnt and newEnt Local coordinates
+--	with transferMode set to 2: Behavior preservation from replacedEnt to newEnt Local coordinates
 -- The original entities must be given in replacedEnts, replacedEnts should have a constrData structure (both str and numerical keys work)
 -- All of the entities must exist.
 -- This function might not freeze the entities hence it's unsafe when used alone (TODO: check if this line is still true?)
@@ -530,9 +540,14 @@ local function restoreConstrBehaviorAfterEntsChange( replacedEnts, constrData, B
 	for entIndex, entKey in pairs( entKeys ) do
 
 		local replacedEnt = replacedEnts[entKey] or replacedEnts[entIndex]
+		print( "replacedEnt = ", replacedEnt )
 		update = transferFunc( constrData, BuildDupeInfo, replacedEnt, entIndex, entKeys, boneKeys ) or update
 
 	end
+
+	print("restoreConstrBehaviorAfterEntsChange DEBUG (S)")
+	PrintTable( constrData )
+	print("restoreConstrBehaviorAfterEntsChange DEBUG (E)")
 
 end
 
@@ -549,6 +564,7 @@ local function changeConstrEnts( entChange, constr, ply, delete )
 
 		local ent		= constrData[entKey]
 		local newEnt	= ent and entChange[ent] or entChange[i]
+		print("changeConstrEnts DEBUG", ent, "->", newEnt)
 		if newEnt then
 			update = ( newEnt ~= ent ) or update
 			constrData[entKey] = newEnt
@@ -558,17 +574,20 @@ local function changeConstrEnts( entChange, constr, ply, delete )
 
 	if update then ConstraintEditor.CreateConstrsFromConstrs( { constr }, constrData, ply, true, true, delete ) end
 
+	PrintTable( constrData )
+
 	return constrData
 
 end
 
 
--- Lets you transfer constraints between entities (if they break by doing so, does nothing)
--- entChange table can have, as keys, either:
--- 	Entities to specifically target one or multiple entities to be changed
--- 	The numbers 1 and/or 2 to target the first and/or second entity of the constraint(s)
--- Priority is given to entities keys.
--- entChange table values must be the new entities.
+-- Lets you replace the entities of multiple constraints while trying to preserve the constraints' behaviors (if they break by doing so, does nothing)
+-- TODO: Check if this can actually be used alone safely, write the answer to that HERE...
+--
+-- Arguments:
+-- entChange (table): Table whose keys are the replaced entities / constraint data entities' indexes and values the replacement (=new) entities:
+--	If the key is an entity, any occurence of that entity in the constraints data will be targetted
+--	If the key is 1 (resp. 2), the first (resp. second) entity in the constraints data will be targetted (with lower priority than entity key)
 function ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
 	for _, newEnt in pairs( entChange ) do
@@ -766,6 +785,10 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 		local BuildDupeInfo = copyInfoFromConstrCreationTime( constr.BuildDupeInfo )
 
 		if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrDataCopy, BuildDupeInfo, transferMode ) end
+
+		print("[debug] CreateConstrsFromConstrs (S)")
+		PrintTable( newConstrDataCopy )
+		print("[debug] CreateConstrsFromConstrs (E)")
 
 		constrsReplacements[constr] = ConstraintEditor.CreateConstr( newConstrDataCopy, BuildDupeInfo, desc.Func, ply, not delete, not delete )
 

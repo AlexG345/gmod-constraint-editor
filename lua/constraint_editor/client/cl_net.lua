@@ -88,10 +88,10 @@ ConstraintEditor.netFunctions = {
 
 	[NT.TOOLGUN_MIDDLE_CLICK] = function()
 
+		local ent = net.ReadEntity() --LocalPlayer():GetEyeTrace().Entity
+
 		local constrBrowser	= ConstraintEditor.GetConstrBrowser()
 		local constrIDs		= constrBrowser and constrBrowser.selectionData.IDs
-
-		local ent = LocalPlayer():GetEyeTrace().Entity
 
 		if constrIDs and next( constrIDs ) ~= nil then
 			-- Transfer the selected constraints of the selected entities (except ent) to ent
