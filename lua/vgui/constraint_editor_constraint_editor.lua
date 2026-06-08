@@ -1,6 +1,21 @@
-----------------------------
---  Lets you edit values  --
-----------------------------
+-- Prevents having trailing 0s for vectors
+-- Not sure how precise vectors are so we keep full float precision even though it is too much
+local function getTrimmedVector( vector )
+
+	return string.format( "%f %f %f", vector:Unpack() )
+
+end
+
+
+local function customToString( value )
+	return isvector( value ) and getTrimmedVector( value ) or tostring( value )
+end
+
+
+------------------------------------------------------
+--  Lets you edit some properties from constraints
+--  Does not change the constraints themselves
+------------------------------------------------------
 
 
 local PANEL = {}
@@ -68,13 +83,23 @@ function PANEL:Init()
 
 
 	self.typeRestoreFuncs = {
-		boolean	= tobool,
-		number	= tonumber,
-		string	= tostring,
-		Vector	= Vector,
-		table	= string.ToTable,
-		color	= string.ToColor,
+		[TYPE_BOOL]		= tobool,
+		[TYPE_NUMBER]	= tonumber,
+		[TYPE_STRING]	= tostring,
+		-- [TYPE_TABLE]	= string.ToTable,
+		[TYPE_ANGLE]	= Angle,
+		[TYPE_VECTOR]	= Vector,
+		[TYPE_COLOR]	= string.ToColor,
+	}
 
+	self.rowTypes = {
+		[TYPE_BOOL]		= "Boolean",
+		-- Float is not used as it's worse than generic (it keeps trying to limit values to a min and max, feature that i didn't ask for)
+		-- it's because it uses a dnumslider internally and those are really annoying when it comes to min/max
+		-- [TYPE_NUMBER]	= "Float",
+
+		-- these property editors are all quite useless aren't they?
+		[TYPE_COLOR]	= "constraint_editor_color",
 	}
 
 	self.copiedProperties = self:GetEmptyProperties()
@@ -171,42 +196,51 @@ function PANEL:CreateRows( properties, dataType )
 
 	--local colGreen	= Color( 140, 220, 100, 100 )
 	--local colGreen	= Color( 200, 120, 60, 255 )
-	local h, s, v	= ColorToHSV( self:GetSkin().Colours.Properties.Column_Selected )
-	h = h - 70
-	v = v - 0.15
-	s = s + 0.5
+	local function changeHSV( col )
+		local h, s, v = ColorToHSV( col )
+		return HSVToColor( h - 70, s + 0.5, v - 0.15 )
+	end
 
-	local col = HSVToColor( h, s, v )
+	local col = changeHSV( self:GetSkin().Colours.Properties.Column_Selected )
 	col.a = 150
 
 
 	for i, arg in ipairs( args ) do
 
 		local rowValue	= values[i]
-		local rowType	= IsColor( rowValue ) and "color" or type( rowValue )
-		local rowTypeRestoreFunc = self.typeRestoreFuncs[rowType]
+		local isColor				= IsColor( rowValue )
+		local rowType				= isColor and TYPE_COLOR or TypeID( rowValue )
+		local rowTypeRestoreFunc	= self.typeRestoreFuncs[rowType]
 
 		local editor = self
 
 		local row = self.Properties:CreateRow( rowName, arg )
+		self.rows[i] = row
 
-			self.rows[i] = row
+			row:Setup( self.rowTypes[rowType] or "Generic", { readonly = not rowTypeRestoreFunc } )
 
-			row:Setup( isbool( rowValue ) and "Bool" or "Generic", { readonly = not rowTypeRestoreFunc } )
+			function row:DataChanged( v )
+				self:SetValue( v )
+			end
 
-			function row:DataChanged( v ) self:SetValue( v ) end
+			-- TODO: this is not dependant on this element but vectors have less precisions than floats
+			-- might be a good idea to forget vectors and use only floats clientside?
 
 			function row:SetValue( newValue, newValueIsProperlyTyped, setInnerValue )
 
 				if not newValueIsProperlyTyped then newValue = rowTypeRestoreFunc( newValue ) end
-				newString = tostring( newValue )
+				local newString = customToString( newValue )
 
+				-- If this is a vector it'll get rounded (to 2 decimals or so iirc) which we don't want.
+				-- Using a string works just as good if not better for all non-color values.
 				if setInnerValue then row.Inner:SetValue( newString ) end
 
 				-- Better to check for the string instead of the actual value because users input a string...
-				local edited = ( not editor.cacheComparing ) or ( tostring( editor.cachedProperties.values[i] ) ~= newString )
-
-				print( arg, "edited: ", edited)
+				local edited = true
+				if editor.cacheComparing then
+					local cachedValue = editor.cachedProperties.values[i]
+					edited = ( customToString( cachedValue ) ~= newString ) or ( cachedValue ~= newValue )
+				end
 
 				self:SetPaintBackgroundEnabled( edited )
 
@@ -223,8 +257,8 @@ function PANEL:CreateRows( properties, dataType )
 
 			--row:SetValue( value, true, true )
 
-			local isEntity	= rowType == "Entity"
-			local isBone	= ( not isEntity ) and ( rowType == "number" and string.find( arg, "Bone" ) )
+			local isEntity	= rowType == TYPE_ENTITY
+			local isBone	= ( not isEntity ) and ( rowType == TYPE_NUMBER and string.find( arg, "Bone" ) )
 
 			if isEntity or isBone then
 
@@ -389,8 +423,9 @@ end
 
 
 derma.DefineControl(
-	"DConstraintEditor",
-	"This is from the Constraint Editor addon.",
+	-- it's written twice but it's not a typo
+	"constraint_editor_constraint_editor",
+	ConstraintEditor.dermaDesc or "",
 	PANEL,
 	"DPanel"
 )

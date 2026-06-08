@@ -5,7 +5,7 @@ ConstraintEditor.netTags = {
 	IGNORE_ENTITY			= 3,
 	TOOLGUN_LEFT_CLICK		= 4,
 	TOOLGUN_RIGHT_CLICK		= 5,
-	TOOLGUN_MIDDLE_CLICK	= 6,
+	TOOLGUN_RELOAD	= 6,
 	UPDATE_CONSTRS			= 7,
 	REMOVE_CONSTRS			= 8,
 	DUPLIC_CONSTRS			= 9,
@@ -41,9 +41,7 @@ local function netDebug( isDebugHeader, isSender, netTag, args )
 		if ( CLIENT and isSender ) or ( SERVER and not isSender ) then
 			text1, text2 = text2, text1
 		end
-		print( "" )
-		print( "----- Constraint Editor net debug -----" )
-		print( "" )
+		print( "\n----- Constraint Editor net debug -----\n" )
 		print( text1 .. " tells " .. text2 .. " to " .. getNetTagName( netTag ) .. "(" .. netTag .. ")" )
 	end
 	if args then PrintTable( { args = args } ) end
@@ -67,8 +65,7 @@ BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
 
 
 local function netWriteType( v )
-	local t = TypeID( v )
-	print("write: ", v, t, ConstraintEditor.netWriteFuncs[t] )
+	local t = IsColor( v ) and 255 or TypeID( v )
 	net.WriteUInt( t, 8 )
 	ConstraintEditor.netWriteFuncs[t]( v )
 end
@@ -76,7 +73,6 @@ end
 
 local function netReadType()
 	local t = net.ReadUInt( 8 )
-	print("netread, type:", t)
 	return ConstraintEditor.netReadFuncs[t]()
 end
 
@@ -182,8 +178,6 @@ end
 function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
 
 	if addCount == nil then addCount = true end
-
-	PrintTable( constrIDs )
 
 	-- theoretically (untested) hits the 64 kB limit between about 2664 constraints (worst case), and about 4919 constraints (best case, diff of 1 between each constr ID.)
 

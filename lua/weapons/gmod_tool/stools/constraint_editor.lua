@@ -33,10 +33,12 @@ if CLIENT then
 	}
 
 	TOOL.ClientConVar = {
-		["hud_show_text"]		= 1,
+		["hud_constr_type_lod"]	= 3,
+		["hud_show_ids"]		= 1,
 		["hud_show_lines"]		= 1,
 		["hud_show_halos"]		= 1,
 		["hud_beam_width_min"]	= 1,
+		["hud_icon_size"]		= 12,
 		["transfer_mode"]		= 1
 	}
 
@@ -106,7 +108,7 @@ function TOOL:Reload( trace )
 	if SERVER then
 		ConstraintEditor.TryCleanupTables()
 		local ply = self:GetOwner()
-		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_MIDDLE_CLICK, ply ) then
+		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_RELOAD, ply ) then
 			net.WriteEntity( trace.Entity )
 			net.Send( ply )
 		end
@@ -153,26 +155,50 @@ function TOOL.BuildCPanel( cPanel )
 			draw.RoundedBoxEx( 8, 0, hh, w, h - hh + 5, bgcol, false, false, true, true )
 		end
 
+		settingsDForm:CheckBox( "Show entities' halos",				mode .. "_hud_show_halos" )
+		settingsDForm:CheckBox( "Show constraints' IDs",		mode .. "_hud_show_ids" )
+		local showLinesCheckBox = settingsDForm:CheckBox( "Show constraints' lines",	mode .. "_hud_show_lines" )
 
-		settingsDForm:NumSlider( "Minimum constraint lines width", mode .. "_hud_beam_width_min", 0.4, 20 )
+		local linesWidthSlider	= settingsDForm:NumSlider( "Minimum constraint lines width", mode .. "_hud_beam_width_min", 0.4, 20, 1 )
 
-		settingsDForm:CheckBox( "Show text boxes",			mode .. "_hud_show_text" )
-		settingsDForm:CheckBox( "Show constraint lines",	mode .. "_hud_show_lines" )
-		settingsDForm:CheckBox( "Show halos",				mode .. "_hud_show_halos" )
+		function showLinesCheckBox:OnChange( checked )
+			linesWidthSlider:SetEnabled( checked )
+		end
 
-	local transferModeComboBox = cPanel:ComboBox( "Transfer mode:", mode .. "_transfer_mode" )
-	transferModeComboBox:SetTall(30)
-		transferModeComboBox:Dock(TOP)
-		transferModeComboBox:AddChoice( "World-relative constraint positions preserved", 1 )
-		transferModeComboBox:AddChoice( "Changed entities-relative constraint positions preserved", 2 )
 
-	local constrBrowser = vgui.Create( "DConstraintBrowser" )
+		local constrTypeLODComboBox, constrTypeLabel = settingsDForm:ComboBox( "Constraints types' display: ", mode .. "_hud_constr_type_lod" )
+			constrTypeLabel:SetWide( 140 )
+			constrTypeLODComboBox:SetTall( 20 )
+			constrTypeLODComboBox:Dock( TOP )
+			constrTypeLODComboBox:SetSortItems( false )
+			constrTypeLODComboBox:AddChoice( "Hidden", 0, false, "icon16/cross.png" )
+			constrTypeLODComboBox:AddChoice( "Icons", 1, false, "icon16/color_swatch.png" )
+			constrTypeLODComboBox:AddChoice( "Abbreviated names", 2, false, "icon16/style.png" )
+			constrTypeLODComboBox:AddChoice( "Entire names", 3, false, "icon16/style_add.png" )
+
+		local iconSizeSlider = settingsDForm:NumSlider( "Constraints types' icon size", mode .. "_hud_icon_size", 1, 20, 1 )
+
+		-- This is done like that and not with OnSelect because OnSelect
+		-- does not handle convar changes done without using the combo box
+		local oSV = constrTypeLODComboBox.SetValue
+		function constrTypeLODComboBox:SetValue( value )
+			oSV( self, value )
+			iconSizeSlider:SetEnabled( value == self:GetOptionTextByData( 1 ) )
+		end
+
+	local transferModeComboBox = cPanel:ComboBox( "Entity transfer:", mode .. "_transfer_mode" )
+		transferModeComboBox:SetTall( 20 )
+		transferModeComboBox:Dock( TOP )
+		transferModeComboBox:AddChoice( "Preserve world positions", 1, false, "icon16/world.png" )
+		transferModeComboBox:AddChoice( "Preserve local positions (from target to destination entity)", 2, false, "icon16/house_link.png" )
+
+	local constrBrowser = vgui.Create( "constraint_editor_constraint_browser" )
 	cPanel:AddItem( constrBrowser )
 
 	--[[
 	local p = vgui.Create( "DSizeToContents", cPanel )
 		cPanel:AddItem(p)
-		local constrBrowser = p:Add( "DConstraintBrowser" )
+		local constrBrowser = p:Add( "constraint_editor_constraint_browser" )
 			constrBrowser:SetSize( 250, 650 )
 	]]
 		--constrBrowser.constraintTree:SortConstrTypes()
@@ -196,10 +222,12 @@ end
 function TOOL:DrawHUD()
 
 	ConstraintEditor.DrawHUD(
-		self:GetClientBool("hud_show_text"),
+		self:GetClientNumber("hud_constr_type_lod"),
+		self:GetClientBool("hud_show_ids"),
 		self:GetClientBool("hud_show_lines"),
 		self:GetClientBool("hud_show_halos"),
-		self:GetClientNumber("hud_beam_width_min")
+		self:GetClientNumber("hud_beam_width_min"),
+		self:GetClientNumber("hud_icon_size")
 	)
 
 end

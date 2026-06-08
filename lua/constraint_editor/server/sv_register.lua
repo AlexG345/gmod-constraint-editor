@@ -149,10 +149,6 @@ function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	-- unsharedConstrs: constraints linked to ent but not to other entities in the selection
 	local unsharedConstrs = ConstraintEditor.FindConstrsNotLinkedToEnts( ent, ConstraintEditor.GetEditedEntities( ply ) )
 
-	print("[debug] ConstraintEditor.UnregisterEditedEntity(", ent, ply, ")")
-	print("unsharedConstrs:", unsharedConstrs)
-	PrintTable( unsharedConstrs )
-
 	ConstraintEditor.UnregisterConstrs( unsharedConstrs, ply )
 
 	ConstraintEditor.FindAndSetProperToolStage( ply )

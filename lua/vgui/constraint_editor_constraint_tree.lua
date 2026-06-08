@@ -2,38 +2,29 @@
 --  Lets you see all constraints available for selection  --
 ------------------------------------------------------------
 
+
+local function setPaintNodeEnabled( node, color, enable )
+	node:SetPaintBackgroundEnabled( enable )
+	node:SetBGColor( color )
+	node:SetBackgroundColor( enable and color or nil )
+end
+
+
 local PANEL = {}
 
 function PANEL:Init()
 
-	self.dataPerConstrType = {
-		Axis			= { icon = "icon16/cd.png", },
-		-- AdvBallsocket	= { icon = "icon16/sport_shuttlecock.png", },
-		AdvBallsocket	= { icon = "icon16/chart_pie.png", },
-		-- AdvBallsocket	= { icon = "icon16/color_wheel.png", },
-		Ballsocket		= { icon = "icon16/sport_golf.png", },
-		Elastic			= { icon = "icon16/connect.png", },
-		Hydraulic		= { icon = "icon16/joystick.png", },
-		-- Hydraulic		= { icon = "icon16/newspaper.png", },
-		Keepupright		= { icon = "icon16/arrow_up.png", },
-		Motor			= { icon = "icon16/cd_burn.png", },
-		Muscle			= { icon = "icon16/sport_football.png", },
-		Pulley			= { icon = "icon16/vector.png", },
-		Rope			= { icon = "icon16/link_break.png", },
-		Slider			= { icon = "icon16/shape_align_center.png", },
-		-- Slider			= { icon = "icon16/control_equalizer.png", },
-		Weld			= { icon = "icon16/link.png", },
-		Winch			= { icon = "icon16/webcam.png", },
-		NoCollide		= { icon = "icon16/collision_off.png", },
-	}
+	self.dataPerConstrType = {}
 
 	local h, s, v	= ColorToHSV( self:GetSkin().Colours.Properties.Column_Selected )
 	h = h - 70
 	v = v - 0.15
 	s = s + 0.5
 
-	self.selectColor = HSVToColor( h, s, v )
-	self.selectColor.a = 150
+	self.selectColor	= HSVToColor( h, s, v )
+	self.selectColor.a	= 150
+
+	self.hiddenColor	= Color( 100, 100, 100, 100 )
 
 	self.constrNodes = {}
 
@@ -44,8 +35,8 @@ end
 
 function PANEL:ClearVisual()
 
-	local rootNode = self:Root()
-	rootNode.ChildNodes = nil
+	local rootNode		= self:Root()
+	rootNode.ChildNodes	= nil
 	rootNode:CreateChildNodes()
 	return rootNode
 
@@ -62,12 +53,24 @@ function PANEL:RegisterConstrType( constrType )
 
 	if not t[constrType] then t[constrType] = {} end
 
-	local data = t[constrType]
+	local data			= t[constrType]
+	local visualData	= ConstraintEditor.dataPerConstrType[constrType]
 
 	if not IsValid( data.panel ) then
-		data.panel = self:AddNode( constrType, data.icon or self.defaultIcon )
+		data.panel = self:AddNode( constrType, visualData and visualData.icon or self.defaultIcon )
 		data.panel.constrType = constrType
+		setPaintNodeEnabled( data.panel, self.hiddenColor, ConstraintEditor.HiddenConstrTypes[constrType] )
+
+		function data.panel:ApplySchemeSettings()
+			local c = self:GetBackgroundColor()
+			if c then
+				self:SetBGColor( c )
+			end
+		end
 	end
+
+	print("add", constrType, "hidden:", ConstraintEditor.HiddenConstrTypes[constrType] )
+
 
 end
 
@@ -129,9 +132,9 @@ function PANEL:AddConstrToNode( constrTypeNode, constrID )
 	node.constrID = constrID
 
 	function node:ApplySchemeSettings()
-		local c = node:GetBackgroundColor()
+		local c = self:GetBackgroundColor()
 		if c then
-			node:SetBGColor( c )
+			self:SetBGColor( c )
 		end
 	end
 
@@ -164,7 +167,7 @@ end
 
 function PANEL:UnregisterConstrs( constrIDs )
 
-	local removes = {}
+	local constrTypeNodesToCheck = {}
 
 	for _, constrID in pairs( constrIDs ) do
 
@@ -175,16 +178,30 @@ function PANEL:UnregisterConstrs( constrIDs )
 
 		local constrTypeNode = constrNode:GetParentNode()
 
-		removes[constrTypeNode] = 1 + ( removes[constrTypeNode] or 0 )
+		constrTypeNodesToCheck[constrTypeNode] = true
 
 		constrNode:Remove()
 
 	end
 
-	for constrTypeNode, removeCount in pairs( removes ) do
-		if constrTypeNode:GetChildNodeCount() <= removeCount then
+	-- There might be multiple register/unregister requests in one frame. This caused bugs before.
+	-- That's why we now check for each constraint node validity instead of LOCALLY counting
+	-- the ones we're going to remove. Basically we count globally instead of locally now.
+	-- One small issue is that if there are multiple requests per frame (which is rare?),
+	-- we're doing the same-ish work multiple times per frame.
+
+	for constrTypeNode, remove in pairs( constrTypeNodesToCheck ) do
+		for _, constrNode in pairs( constrTypeNode:GetChildNodes() ) do
+			if constrNode:IsValid() then
+				remove = false
+				break
+			end
+		end
+
+		if remove then
 			self:ClearConstrType( constrTypeNode.constrType )
 		end
+
 	end
 
 end
@@ -237,6 +254,19 @@ function PANEL:DoClick( node )
 end
 
 
+function PANEL:DoRightClick( node )
+	local constrType = node.constrType
+	if not constrType then return end
+
+	local hidden = not ConstraintEditor.HiddenConstrTypes[constrType]
+	ConstraintEditor.HiddenConstrTypes[constrType] = hidden or nil
+
+	setPaintNodeEnabled( node, self.hiddenColor, hidden )
+end
+
+
+
+
 function PANEL:GetConstrNode( constrID )
 
 	return self.constrNodes[constrID]
@@ -252,14 +282,13 @@ function PANEL:GetConstrTypeNode( constrType )
 end
 
 
+
 function PANEL:VisualSelectConstrNode( constrID, enable )
 
 	local constrNode = self:GetConstrNode( constrID )
 
 	if constrNode then
-		constrNode:SetPaintBackgroundEnabled( enable )
-		constrNode:SetBGColor( self.selectColor )
-		constrNode:SetBackgroundColor( enable and self.selectColor or nil )
+		setPaintNodeEnabled( constrNode, self.selectColor, enable )
 		if enable then constrNode:ExpandTo( true ) end
 	end
 
@@ -269,8 +298,8 @@ end
 
 
 derma.DefineControl(
-	"DConstraintTree",
-	"This is from the Constraint Editor addon.",
+	"constraint_editor_constraint_tree",
+	ConstraintEditor.dermaDesc or "",
 	PANEL,
 	"DTree"
 )

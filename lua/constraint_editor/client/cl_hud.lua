@@ -1,10 +1,15 @@
-ConstraintEditor.Halos = {}
-ConstraintEditor.HoveredConstrInfo = { ID = -1, Type = "" } -- for the stool
+ConstraintEditor.Halos				= {}
+ConstraintEditor.HoveredConstrInfo	= { ID = -1, Type = "" } -- for the stool
+ConstraintEditor.HiddenConstrTypes	= {}
 
 
 hook.Add( "PreDrawHalos", "AddPropHalos", function()
+
 	local weapon = LocalPlayer():GetActiveWeapon()
-	if ( not IsValid(weapon) ) or ( weapon:GetClass() ~= "gmod_tool" ) or ( LocalPlayer():GetTool().Mode ~= ConstraintEditor.Mode ) then return end
+	if ( not IsValid(weapon) ) or ( weapon:GetClass() ~= "gmod_tool" ) then return end
+	local tool = LocalPlayer():GetTool()
+	if not tool or tool.Mode ~= ConstraintEditor.Mode then return end
+
 	for col, entities in pairs( ConstraintEditor.Halos ) do
 		halo.Add( entities, col, 3, 3, 5, true, true )
 	end
@@ -12,7 +17,7 @@ end )
 
 
 -- These are functions
-local extractEntAndPosData, createTextData, prepareDraw, depthSortFindHover
+local extractEntAndPosData, createHud2DConstrData, prepareDraw, sortByDepthAndFindHoveredConstr
 
 
 local beamColorsWeighted = {
@@ -42,17 +47,6 @@ for i = 1,10 do
 	boxColors[i] = Color( 0, 10 * i, 0, 230 )
 end
 
--- NoCollide is unlisted
---local constrTypes = { "Axis", "AdvBallsocket", "Ballsocket", "Elastic", "Hydraulic", "Keepupright", "Motor", "Muscle", "Pulley", "Rope", "Slider", "Weld", "Winch", "NoCollide", "Other" }
-local constrTypes = { "Weld", "Keepupright", "Rope", "Muscle", "Hydraulic", "Winch", "Elastic", "Motor", "Axis", "Ballsocket", "AdvBallsocket", "Slider", "Other" }
-local hueStep = 360 / #constrTypes
-
-constrTypeColor = { NoCollide = HSVToColor( 0, 0, 0.5) }
-for i, constrType in ipairs( constrTypes ) do
-	constrTypeColor[constrType] = HSVToColor( ( - 0 + ( i - 1 ) * hueStep ) % 360, 0.55, 0.95 )
-end
-
-
 -- These are ordered from smaller to bigger
 local fonts = {
 	"DefaultSmall", --"DermaDefault",
@@ -61,9 +55,7 @@ local fonts = {
 	"Trebuchet24"
 }
 
-
-
-function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin )
+function ConstraintEditor.DrawHUD( constrTypeLOD, showIDs, showBeams, showHalos, beamWidthMin, iconSize )
 
 	local padding = 3
 
@@ -73,56 +65,66 @@ function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin 
 	local constrBrowser		= ConstraintEditor.GetConstrBrowser()
 	local editedConstrIDs	= constrBrowser and constrBrowser.selectionData.IDs or {}
 
-	local ezData		= {}
-	local textDatas		= showText and {}
-	local overlaps		= {}
+	local hud3DConstrsData	= {}
+	local hud2DConstrsData	= {}
+	local overlaps			= {}
 	table.Empty( ConstraintEditor.Halos )
 
 	surface.SetFont( fonts[1] )
 
-
 	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
+
+		if ConstraintEditor.HiddenConstrTypes[constrType] then continue end
+
+		local preStr = ( constrTypeLOD <= 1 and "" ) or ( constrTypeLOD == 2 and string.gsub( constrType, "(%u%l)%l*", "%1" ) ) or constrType
 
 		for constrID, constrData in pairs( constrDatas ) do
 
-			prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, constrType, constrID, constrData )
+			prepareDraw( hud3DConstrsData, hud2DConstrsData, overlaps, editedConstrIDs, padding, constrType, preStr, constrID, showIDs, constrData )
 
 		end
 
 	end
 
-	-- Sort the texts by depth then find hovered constraint text
-	if showText then
-		depthSortFindHover( ezData, textDatas )
+	-- Sort the 2D data by depth then find the hovered constraint
+	if constrTypeLOD > 0 then
+		sortByDepthAndFindHoveredConstr( hud3DConstrsData, hud2DConstrsData, iconSize )
 	end
 
 	cam.Start3D()
 
 	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
 
-		local constrCount = table.Count( constrDatas )
-		local constrColor = constrTypeColor[constrType] or constrTypeColor.Other or color_black
+		if ConstraintEditor.HiddenConstrTypes[constrType] then continue end
+
+		local constrCount	= table.Count( constrDatas )
+		local visualData	= ConstraintEditor.dataPerConstrType[constrType]
+		local lineColor		= visualData and visualData.lineColor or color_black
+		-- local iconColor		= visualData and visualData.iconColor or color_white
+		-- local iconMaterial	= constrTypeLOD == 1 and Material( visualData and visualData.icon or "" )
 
 		for constrID, constrData in pairs( constrDatas ) do
 
-			local data = ezData[constrID]
-			if not data then continue end
-			local ents, positions, weight = data.ents, data.positions, data.weight
+			local hud3DConstrData = hud3DConstrsData[constrID]
+			if not hud3DConstrData then continue end
 
-			local colIndex		= math.min( weight - 1, 2 )
+			local weight	= hud3DConstrData.weight
+			local colIndex	= math.min( weight - 1, 2 )
 
 			if showBeams then
 
+				local positions		= hud3DConstrData.positions
 				local vertexCount	= #positions
 				local segmentCount 	= vertexCount - 1
 
 				local beamWidth = weight * math.Clamp( 2 - 0.1 * constrCount, beamWidthMin, 100 )
 
 				local beamCols		= beamColorsWeighted[colIndex]
-				local beamColStart	= beamCols and beamCols.start or constrColor
-				local beamColEnd	= beamCols and beamCols.final or constrColor
+				local beamColStart	= beamCols and beamCols.start or lineColor
+				local beamColEnd	= beamCols and beamCols.final or lineColor
 
-				render.OverrideDepthEnable( weight > 2, true )
+				-- render.OverrideDepthEnable( weight > 2, true )
+				render.OverrideDepthEnable( true, true )
 				render.SetColorMaterial()
 
 				render.StartBeam( vertexCount )
@@ -147,9 +149,18 @@ function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin 
 
 			end
 
+			-- -- Draw icons
+			-- if iconMaterial then
+			-- 	hud3DConstrData.mat = iconMaterial
+			-- 	render.SetMaterial( iconMaterial ) -- Tell render what material we want, in this case the flash from the gravgun
+			-- 	local mul = 1 + 0.1 * weight
+			-- 	render.DrawSprite( hud3DConstrData.midPos3D, iconSize * mul, iconSize * mul, iconColor ) -- Draw the sprite in the middle of the map, at 16x16 in it's original colour with full alpha.
+			-- end
+
 			-- Draw halos
 			if showHalos and weight > 1 then
 
+				local ents		= hud3DConstrData.ents
 				local halos		= ConstraintEditor.Halos
 				local haloCols	= haloColorsWeighted[colIndex]
 
@@ -169,26 +180,52 @@ function ConstraintEditor.DrawHUD( showText, showBeams, showHalos, beamWidthMin 
 
 	end
 
+
+	if constrTypeLOD == 1 then
+
+		for _, hud2DConstrData in pairs( hud2DConstrsData ) do
+
+			local constrType	= hud2DConstrData.constrType
+			local constrID		= hud2DConstrData.constrID
+
+			if ConstraintEditor.HiddenConstrTypes[constrType] then continue end
+
+			local hud3DConstrData = hud3DConstrsData[constrID]
+			if not hud3DConstrData then continue end
+
+			local visualData	= ConstraintEditor.dataPerConstrType[constrType]
+			local iconMaterial	= Material( visualData and visualData.icon or "" )
+			local iconColor		= visualData and visualData.iconColor or color_white
+
+			-- Draw icons
+			render.SetMaterial( iconMaterial ) -- Tell render what material we want, in this case the flash from the gravgun
+			local mul = 1 + 0.1 * hud3DConstrData.weight
+			render.DrawSprite( hud3DConstrData.midPos3D, iconSize * mul, iconSize * mul, iconColor ) -- Draw the sprite in the middle of the map, at 16x16 in it's original colour with full alpha.
+
+		end
+
+	end
+
 	cam.End3D()
 
-	if not showText then return end
+	if not ( showIDs or constrTypeLOD > 1 ) then return end
 
-	for i, textData in pairs( textDatas ) do
+	for i, hud2DConstrData in pairs( hud2DConstrsData ) do
 
-		local pos, constrID = textData.pos, textData.constrID
-		local weight = ezData[constrID] and ezData[constrID].weight or 1
+		local pos, constrID = hud2DConstrData.pos, hud2DConstrData.constrID
+		local weight = hud3DConstrsData[constrID] and hud3DConstrsData[constrID].weight or 1
 		local b = #boxColors - 1
-		local boxColorIndex = 1 + math.abs( ( textData.overlapNum - b ) % ( 2 * b ) - b )
+		local boxColorIndex = 1 + math.abs( ( hud2DConstrData.overlapNum - b ) % ( 2 * b ) - b )
 
 		draw.WordBox(
 			padding,
 			pos.x,
 			pos.y,
-			textData.str,
+			hud2DConstrData.str,
 			fonts[weight],
 			boxColors[boxColorIndex],
-			--boxColors[1 + textData.overlapNum % #boxColors],
-			textData.col or color_white,
+			--boxColors[1 + hud2DConstrData.overlapNum % #boxColors],
+			hud2DConstrData.col or color_white,
 			TEXT_ALIGN_CENTER,
 			TEXT_ALIGN_CENTER
 		)
@@ -221,31 +258,34 @@ function extractEntAndPosData( constrType, constrData )
 end
 
 
-function prepareDraw( ezData, textDatas, overlaps, editedConstrIDs, padding, constrType, constrID, constrData )
+function prepareDraw( hud3DConstrsData, hud2DConstrsData, overlaps, editedConstrIDs, padding, constrType, preStr, constrID, showIDs, constrData )
 
 	local ent1, ent2, pos1, pos2, positions = extractEntAndPosData( constrType, constrData )
 	if not ent1 then return end
 
-	local isEdited = editedConstrIDs[constrID]
-	local weight = isEdited and 3 or 1
+	local isEdited	= editedConstrIDs[constrID]
+	local weight	= isEdited and 3 or 1
 
-	ezData[constrID] = {
-		ents		= { ent1, ent2 },
-		positions	= positions,
-		weight		= weight
-	}
-
-	if not textDatas then return end
-
-	local str		= constrType .. ( " [" .. constrID or "?" ) .. "]"
 	local midIndex	= math.floor( #positions / 2 )
 	local midPos3D	= ( positions[midIndex] + positions[midIndex + 1] ) / 2
 
-	table.insert( textDatas, createTextData( constrID, constrType, str, padding, midPos3D, nil, overlaps ) or nil )
+	hud3DConstrsData[constrID] = {
+		ents		= { ent1, ent2 },
+		positions	= positions,
+		weight		= weight,
+		midPos3D	= midPos3D,
+	}
 
-	for _, data in ipairs( { { ent = ent1, pos = pos1 }, { ent = ent2, pos = pos2 } } ) do
-		if data.ent:IsWorld() then
-			table.insert( textDatas, createTextData( nil, nil, "[World]", padding, Vector( data.pos ), math.huge, nil ) or nil )
+	if not hud2DConstrsData then return end
+
+	local str		= showIDs and ( preStr .. ( " [" .. constrID or "?" ) .. "]" ) or preStr
+	str = string.TrimLeft( str, " " )
+
+	table.insert( hud2DConstrsData, createHud2DConstrData( constrID, constrType, str, padding, midPos3D, nil, overlaps ) or nil )
+
+	for ent, pos in pairs( { [ent1] = pos1, [ent2] = pos2 } ) do
+		if ent:IsWorld() then
+			table.insert( hud2DConstrsData, createHud2DConstrData( nil, nil, "(World)", padding, Vector( pos ), math.huge, nil ) or nil )
 		end
 	end
 
@@ -253,7 +293,7 @@ end
 
 
 
-function createTextData( constrID, constrType, str, padding, pos3D, depth, overlaps )
+function createHud2DConstrData( constrID, constrType, str, padding, pos3D, depth, overlaps )
 
 	if not depth then
 		depth = (pos3D - EyePos()):LengthSqr()
@@ -274,7 +314,7 @@ function createTextData( constrID, constrType, str, padding, pos3D, depth, overl
 		constrID	= constrID or -1,
 		constrType	= constrType,
 		str			= str or "",
-		padding		= padding or 4,
+		padding		= padding or 0,
 		pos			= pos2D,
 		depth		= depth,
 		overlapNum	= overlapID and overlaps[overlapID] or 0
@@ -284,29 +324,36 @@ end
 
 
 
-function depthSortFindHover( ezData, textDatas )
+function sortByDepthAndFindHoveredConstr( hud3DConstrsData, hud2DConstrsData, iconSize )
 
-	table.sort( textDatas, function( a, b )
+	table.sort( hud2DConstrsData, function( a, b )
 		return a.depth > b.depth
 	end )
 
-	local cursorX, cursorY = input.GetCursorPos()
+	local cursorX, cursorY	= input.GetCursorPos()
 
-	for i = #textDatas, 1, -1 do
+	for hud2DConstrDataIndex = #hud2DConstrsData, 1, -1 do
 
-		local textData = textDatas[i] or {}
-		local constrID, constrType = textData.constrID, textData.constrType
+		local hud2DConstrData = hud2DConstrsData[hud2DConstrDataIndex] or {}
+		local constrID, constrType = hud2DConstrData.constrID, hud2DConstrData.constrType
 		if not constrID then continue end
-		if not ezData[constrID] then continue end
+		if not hud3DConstrsData[constrID] then continue end
 
-		local pos, str, padding = textData.pos, textData.str, textData.padding
-		local w, h = surface.GetTextSize( str )
-		w, h = w + padding * 2, h + padding * 2
+		local extraSize	= 2 * hud2DConstrData.padding
+
+		local w, h		= surface.GetTextSize( hud2DConstrData.str )
+		if w == 0 then
+			extraSize = 530 * iconSize / math.sqrt( hud2DConstrData.depth )
+			h = 0
+		end
+		w, h			= w + extraSize, h + extraSize
+
+		local pos		= hud2DConstrData.pos
 
 		if math.abs( cursorX - pos.x ) * 2 < w and math.abs( cursorY - pos.y ) * 2 < h then
 			ConstraintEditor.HoveredConstrInfo	= { ID = constrID, Type = constrType }
-			ezData[constrID].weight				= ezData[constrID].weight + 1
-			textData.col						= Color( 70, 200, 255 )
+			hud3DConstrsData[constrID].weight		= hud3DConstrsData[constrID].weight + 1
+			hud2DConstrData.col						= Color( 70, 200, 255 )
 			return
 		end
 

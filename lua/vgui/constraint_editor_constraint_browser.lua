@@ -21,13 +21,13 @@ function PANEL:Init()
 	hDivider:SetDividerWidth( 5 )
 	hDivider:Dock( FILL )
 
-	hDivider:SetLeftMin( 105 )
+	hDivider:SetLeftMin( 90 )
 
-		local constraintTree = hDivider:Add( "DConstraintTree" )
+		local constraintTree = hDivider:Add( "constraint_editor_constraint_tree" )
 		hDivider:SetLeft( constraintTree )
 		self.constraintTree = constraintTree
 
-		local constraintEditor = hDivider:Add( "DConstraintEditor" )
+		local constraintEditor = hDivider:Add( "constraint_editor_constraint_editor" )
 		hDivider:SetRight( constraintEditor )
 		self.constraintEditor = constraintEditor
 
@@ -138,8 +138,6 @@ end
 --	(int | nil): The final edit mode
 function PANEL:SelectIDs( selection, selectionDataType, elimination )
 
-	print("dconstraintbrowser select ids", selection, selectionDataType, elimination)
-
 	if not ( selection or elimination ) then return end
 
 	local t = self.selectionData
@@ -204,7 +202,6 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 			( oldSelectionDataType ~= t.dataType )
 		)
 	)
-	print( "dataNeeded:", dataNeeded)
 
 	return dataNeeded, t.IDs, t.editMode
 
@@ -248,6 +245,9 @@ end
 
 function PANEL:UnregisterConstrs( constrIDs )
 
+	print( "browser unregistering:" )
+	PrintTable( constrIDs )
+
 	local t = { self:SelectIDs( nil, nil, constrIDs ) }
 
 	self.constraintTree:UnregisterConstrs( constrIDs )
@@ -288,8 +288,8 @@ function PANEL:UpdateServer()
 end
 
 derma.DefineControl(
-	"DConstraintBrowser",
-	"This is from the Constraint Editor addon.",
+	"constraint_editor_constraint_browser",
+	ConstraintEditor.dermaDesc or "",
 	PANEL,
 	"DPanel"
 )

@@ -32,7 +32,7 @@ function ConstraintEditor.UnregisterConstrs( constrIDs )
 
 	-- Because unregistering constraints from the constraint browser can change the selection,
 	-- it is necessary to use the function below which automatically asks the server for new data if needed
-	ConstraintEditor.CallSelectFuncOnConstraintBrowser("UnregisterConstrs", constrIDs)
+	ConstraintEditor.CallSelectFuncOnConstraintBrowser( "UnregisterConstrs", constrIDs )
 
 	for constrType, constrDatas in pairs( ConstraintEditor.constrs ) do
 		for constrID, _ in pairs( constrIDs ) do

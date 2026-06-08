@@ -33,7 +33,6 @@ function ConstraintEditor.CallSelectFuncOnConstraintBrowser( funcName, ... )
 
 	-- The constraint browser function must return this stuff
 	local dataNeeded, IDs, editMode = constrBrowser[funcName]( constrBrowser, ... )
-	print( dataNeeded, IDs, editMode )
 
 	if not dataNeeded then return end
 

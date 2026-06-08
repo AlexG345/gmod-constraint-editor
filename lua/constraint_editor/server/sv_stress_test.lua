@@ -1,3 +1,5 @@
+-- work in progress --
+
 local NT = ConstraintEditor.netTags
 
 function ConstraintEditor.StressTest()

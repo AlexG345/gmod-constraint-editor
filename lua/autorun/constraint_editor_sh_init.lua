@@ -1,4 +1,6 @@
-ConstraintEditor = {}
+ConstraintEditor = {
+	addonName = "Constraint Editor"
+}
 
 
 local function AddFile( dirPath, fileName )
@@ -11,12 +13,10 @@ local function AddFile( dirPath, fileName )
 	local isForClient	= isForBoth or fileSide == "cl_"
 
 	if ( SERVER and isForServer ) or ( CLIENT and isForClient ) then
-		print( "include: " .. filePath )
 		include( filePath )
 	end
 
 	if SERVER and isForClient then
-		print( "sent  to client: " .. filePath )
 		AddCSLuaFile( filePath )
 	end
 

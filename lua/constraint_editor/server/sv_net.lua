@@ -103,12 +103,10 @@ local function getNetConstrs( ply, constrCount )
 		ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
 	end
 
-	print("")
-	print("[debug] getNetConstrs")
+	print("\n[debug] getNetConstrs")
 	MsgC( Color( 0, 255, 0 ), "\tValid constraints:\n" )
 	PrintTable( validConstrs )
-	print("")
-	MsgC( Color( 255, 0, 0 ), "\tInvalid constraints:\n" )
+	MsgC( Color( 255, 0, 0 ), "\n\tInvalid constraints:\n" )
 	PrintTable( badConstrIDs )
 	print("")
 
@@ -169,9 +167,6 @@ ConstraintEditor.netFunctions = {
 
 		local constrs = getNetConstrs( ply )
 
-		print("[debug] remove constrs, good constrs found:")
-		PrintTable(constrs)
-
 		ConstraintEditor.DeleteConstrs( constrs )
 
 		return constrs
@@ -198,8 +193,8 @@ ConstraintEditor.netFunctions = {
 
 	[NT.TRANSFER_CONSTRS] = function( ply )
 
-		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
 		local constrs	= getNetConstrs( ply )
+		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
 
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply ) or {}
 		if not ( newEnt and editedEnts ) then return end

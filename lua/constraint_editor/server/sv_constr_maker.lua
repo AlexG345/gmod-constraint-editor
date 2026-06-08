@@ -51,8 +51,8 @@ end
 -- Arguments:
 --	ent (Entity): The entity whose info we want to save
 --	phys (PhysObj): The physics object whose info we want to save (can replace ent (arg))
---	saveTransform: Only if true will save ent's or phys' (args) position and angles
---	saveMotion: Only if true will try to save phys' (arg) motion state (whether it's frozen or not)
+--	saveTransform: Only if true will save ent's or phys's (args) position and angles
+--	saveMotion: Only if true will try to save phys's (arg) motion state (whether it's frozen or not)
 --
 -- Returns:
 --	(table): Table containing the wanted information (check the arguments)
@@ -154,14 +154,10 @@ local function LocalToWorldConstrData( constrData, overwrite )
 	local entities = {}
 	local world = game.GetWorld()
 
-	print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-
 	for i, entKey in pairs( entKeys ) do
 
 		local ent = constrData[entKey]
 		table.insert( entities, ent )
-
-		print("made to world: ", ent, "->", world)
 
 		if ent:IsWorld() then continue end
 
@@ -469,8 +465,6 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or replacedEnt == newEnt then return false end
 
-	print("keep going: ", replacedEnt, "->", newEnt)
-
 	constrData[replacedEntKey] = replacedEnt
 
 	local otherEntIndex = 1 + replacedEntIndex % 2
@@ -492,10 +486,6 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	-- Attach the constraint positions to newEnt
 	LocalToWorldConstrData( constrData, true )
-
-	print("restoreConstrLocalBehaviorAfterEntChange debug [S]")
-	PrintTable(constrData)
-	print("restoreConstrLocalBehaviorAfterEntChange debug [E]")
 
 	WorldToLocalConstrData( constrData, { newEnt, newEnt }, true )
 
@@ -540,14 +530,10 @@ local function restoreConstrBehaviorAfterEntsChange( replacedEnts, constrData, B
 	for entIndex, entKey in pairs( entKeys ) do
 
 		local replacedEnt = replacedEnts[entKey] or replacedEnts[entIndex]
-		print( "replacedEnt = ", replacedEnt )
+
 		update = transferFunc( constrData, BuildDupeInfo, replacedEnt, entIndex, entKeys, boneKeys ) or update
 
 	end
-
-	print("restoreConstrBehaviorAfterEntsChange DEBUG (S)")
-	PrintTable( constrData )
-	print("restoreConstrBehaviorAfterEntsChange DEBUG (E)")
 
 end
 
@@ -564,7 +550,7 @@ local function changeConstrEnts( entChange, constr, ply, delete )
 
 		local ent		= constrData[entKey]
 		local newEnt	= ent and entChange[ent] or entChange[i]
-		print("changeConstrEnts DEBUG", ent, "->", newEnt)
+
 		if newEnt then
 			update = ( newEnt ~= ent ) or update
 			constrData[entKey] = newEnt
@@ -573,8 +559,6 @@ local function changeConstrEnts( entChange, constr, ply, delete )
 	end
 
 	if update then ConstraintEditor.CreateConstrsFromConstrs( { constr }, constrData, ply, true, true, delete ) end
-
-	PrintTable( constrData )
 
 	return constrData
 
@@ -776,19 +760,11 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 		ConstraintEditor.TransformConstrDataKeys( newConstrDataCopy, desc, false, true ) -- Make sure we use str keys
 		local isChanged = ConstraintEditor.CompleteConstrData( constrData, newConstrDataCopy, desc, ply )
 
-		print("[debug] CreateConstrsFromConstrs (S)")
-		PrintTable( newConstrDataCopy )
-		print("[debug] CreateConstrsFromConstrs (E)")
-
 		if delete and not isChanged then continue end
 
 		local BuildDupeInfo = copyInfoFromConstrCreationTime( constr.BuildDupeInfo )
 
 		if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrDataCopy, BuildDupeInfo, transferMode ) end
-
-		print("[debug] CreateConstrsFromConstrs (S)")
-		PrintTable( newConstrDataCopy )
-		print("[debug] CreateConstrsFromConstrs (E)")
 
 		constrsReplacements[constr] = ConstraintEditor.CreateConstr( newConstrDataCopy, BuildDupeInfo, desc.Func, ply, not delete, not delete )
 

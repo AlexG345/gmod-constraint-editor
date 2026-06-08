@@ -86,7 +86,7 @@ ConstraintEditor.netFunctions = {
 
 	end,
 
-	[NT.TOOLGUN_MIDDLE_CLICK] = function()
+	[NT.TOOLGUN_RELOAD] = function()
 
 		local ent = net.ReadEntity() --LocalPlayer():GetEyeTrace().Entity
 

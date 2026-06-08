@@ -1,3 +1,6 @@
+ConstraintEditor.dermaDesc = "This is from the addon called " .. ( ConstraintEditor.addonName or "Constraint Editor" )
+
+
 -- Gets the constraint browser panel from the main menu (tool control panel)
 function ConstraintEditor.GetConstrBrowser()
 	local cPanel = controlpanel.Get( ConstraintEditor.Mode )
