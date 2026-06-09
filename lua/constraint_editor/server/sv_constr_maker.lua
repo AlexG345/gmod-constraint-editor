@@ -147,26 +147,28 @@ end
 -- Returns:
 --	worldConstrData (table): World-relative converted constraint data
 --	entities (table): Sequential table containing first entity and second entity from constrData (arg) before any modifications
-local function LocalToWorldConstrData( constrData, overwrite )
+local function LocalToWorldConstrData( constrData, mats, overwrite )
 
-	local entKeys, _, posKeys = ConstraintEditor.GetConstrEntBonePosKeys( constrData )
-	local worldConstrData = overwrite and constrData or table.Copy( constrData )
+	local entKeys			= ConstraintEditor.GetConstrEntKeys( constrData )
+	local posKeys			= ConstraintEditor.GetConstrPosKeys( constrData )
+	local worldConstrData	= overwrite and constrData or table.Copy( constrData )
 	local entities = {}
 	local world = game.GetWorld()
 
 	for i, entKey in pairs( entKeys ) do
 
-		local ent = constrData[entKey]
+		local ent = constrData[entKey] or constrData[i]
 		table.insert( entities, ent )
 
 		if ent:IsWorld() then continue end
-
 		worldConstrData[entKey] = world
+
+		local mat = mats[ent] or ent:GetWorldTransformMatrix()
 
 		for _, posKey in pairs( posKeys[i] ) do
 
 			local localPos = constrData[posKey]
-			worldConstrData[posKey] = ent:LocalToWorld( localPos )
+			worldConstrData[posKey] = mat * localPos
 
 		end
 	end
@@ -176,7 +178,8 @@ local function LocalToWorldConstrData( constrData, overwrite )
 end
 
 
--- Converts all found occurences of world positions to local positions
+
+-- Does the reverse of LocalToWorldConstrData
 --
 -- Arguments:
 --	worldConstrData (table): Constraint data that must use string keys, and whose entities should be the world
@@ -185,25 +188,66 @@ end
 --
 -- Returns:
 --	constrData (table): entities (arg) -relative converted constraint data
-local function WorldToLocalConstrData( worldConstrData, entities, overwrite )
+local function WorldToLocalConstrData( worldConstrData, mats, entities, overwrite )
 
-	local entKeys, _, posKeys = ConstraintEditor.GetConstrEntBonePosKeys( worldConstrData )
-	local constrData = overwrite and worldConstrData or table.Copy( worldConstrData )
+	local entKeys		= ConstraintEditor.GetConstrEntKeys( worldConstrData )
+	local posKeys		= ConstraintEditor.GetConstrPosKeys( worldConstrData )
+	local constrData	= overwrite and worldConstrData or table.Copy( worldConstrData )
 
 	for i, entKey in pairs( entKeys ) do
 
 		local ent = entities[entKey] or entities[i]
 		if ent:IsWorld() then continue end
+		constrData[entKey] = ent
+
+		local mat = ( mats[ent] or ent:GetWorldTransformMatrix() ):GetInverseTR()
 
 		for _, posKey in pairs( posKeys[i] ) do
 			local worldPos = constrData[posKey]
-			constrData[posKey] = ent:WorldToLocal( worldPos )
+			constrData[posKey] = mat * worldPos
 		end
-		constrData[entKey] = ent
 
 	end
 
 	return constrData
+
+end
+
+
+-- Same as chaining WorldToLocalConstrData( LocalToWorldConstrData )
+local function LocalToLocalConstrData( constrData, mats, newEntities, overwrite )
+
+	local entities		= {}
+	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrData )
+	local posKeys		= ConstraintEditor.GetConstrPosKeys( constrData )
+	constrData			= overwrite and constrData or table.Copy( constrData )
+
+	for i, entKey in pairs( entKeys ) do
+
+		local ent		= constrData[entKey] or constrData[i]
+		local newEnt	= newEntities[entKey] or newEntities[i]
+		table.insert( entities, ent )
+
+		if ent == newEnt then continue end
+
+		constrData[entKey] = newEnt
+
+		local mat, newMat = ( mats[ent] or ent:GetWorldTransformMatrix() ), ( mats[newEnt] or newEnt:GetWorldTransformMatrix() )
+
+		if mat == newMat then continue end
+
+		local transform = newMat:GetInverseTR()
+		transform:Mul( mat )
+
+		for _, posKey in pairs( posKeys[i] ) do
+
+			local localPos = constrData[posKey]
+			constrData[posKey] = transform * localPos
+
+		end
+	end
+
+	return constrData, entities
 
 end
 
@@ -242,6 +286,45 @@ local function overwriteInfoFromConstrCreationTime( BuildDupeInfo, entKeys, enti
 end
 
 
+local function overwriteInfoFromConstrCreationTimeV2( BuildDupeInfo, mats, entities, bones )
+
+	if not BuildDupeInfo then return end
+
+	BuildDupeInfo:Empty()
+
+	for i, ent in ipairs( entities ) do
+
+		if i > 2 then break end -- normally should never happen
+		if ent:IsWorld() then continue end
+
+		local entMat	= mats[ent] or ent:GetWorldTransformMatrix()
+		local entPos	= entMat:GetTranslation()
+
+		BuildDupeInfo["Ent" .. i .. "Ang"] = entMat:GetAngles()
+
+		if i == 1 then
+			BuildDupeInfo.Ent1Pos	= entPos
+		else
+			BuildDupeInfo.EntityPos	= BuildDupeInfo.Ent1Pos - entPos
+		end
+
+		local bone = bones[i]
+		if bone and ent:GetPhysicsObjectCount() > 1 then
+			local boneStr	= "Bone" .. i
+			local phys		= ent:GetPhysicsObjectNum( bone )
+			if IsValid( phys ) then
+				local boneMat						= mats[phys] or phys:GetPositionMatrix()
+				BuildDupeInfo[boneStr]				= bone
+				BuildDupeInfo[boneStr .. "Angle"]	= boneMat:GetAngles()
+				BuildDupeInfo[boneStr .. "Pos"]		= boneMat:GetTranslation() - entPos
+			end
+		end
+
+	end
+
+end
+
+
 -- Creates a deep copy of a BuildDupeInfo table, considering that it can contain vectors and angles
 local function copyInfoFromConstrCreationTime( BuildDupeInfo )
 	if not BuildDupeInfo then return end
@@ -260,11 +343,11 @@ end
 -- TODO: check why when world is involved, it doesn't always work as intended, and if it can be fixed.
 local function applyInfoFromConstrCreationTime( BuildDupeInfo, constrData, entKeys, staticEntIndex, objectsInfo )
 
-	local objectsInfo = objectsInfo or {}
+	objectsInfo = objectsInfo or {}
 
 	if not BuildDupeInfo then return objectsInfo end
 
-	entKeys = entKeys or ConstraintEditor.GetConstrEntBonePosKeys( constrData )
+	entKeys = entKeys or ConstraintEditor.GetConstrEntKeys( constrData )
 
 	local entities = {
 		constrData[entKeys[1]],
@@ -378,6 +461,40 @@ local function applyInfoFromConstrCreationTime( BuildDupeInfo, constrData, entKe
 end
 
 
+local function applyInfoFromConstrCreationTimeV2( BuildDupeInfo, constrData, entKeys, restoreMats )
+
+	restoreMats = restoreMats or {}
+
+	local entsTransforms = ConstraintEditor.GetTransformsSavedAtConstrCreation( BuildDupeInfo )
+
+	for i, transform in pairs( entsTransforms ) do
+
+		local ent = constrData[entKeys[i]] or constrData[i]
+		if IsValid( ent ) then
+
+			restoreMats[ent] = ent:GetWorldTransformMatrix()
+			if transform.entPos then ent:SetPos( transform.entPos ) end
+			if transform.entAngles then ent:SetAngles( transform.entAngles ) end
+
+			local phys = transform.bone and ent:GetPhysicsObjectNum( transform.bone )
+			if IsValid( phys ) then
+				restoreMats[phys] = phys:GetPositionMatrix()
+				if transform.bonePos then phys:SetPos( transform.bonePos ) end
+				if transform.boneAngles then phys:SetAngles( transform.boneAngles ) end
+			end
+
+		end
+
+	end
+
+	return restoreMats
+
+end
+
+
+
+
+
 
 
 ---------------------------
@@ -401,7 +518,7 @@ local function restoreConstrWorldBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	constrData[replacedEntKey] = replacedEnt
 
-	-- previously in applyAndConvertInfoFromConstrCreationTime
+	-- the part below was previously in the removed function applyAndConvertInfoFromConstrCreationTime
 	local objectsInfo = {}
 
 	local otherEntIndex = 1 + replacedEntIndex % 2
@@ -444,9 +561,7 @@ local function restoreConstrWorldBehaviorAfterEntChange( constrData, BuildDupeIn
 	end
 	-- end of previously in applyAndConvertInfoFromConstrCreationTime
 
-	LocalToWorldConstrData( constrData, true )
-	constrData[replacedEntKey] = newEnt
-	WorldToLocalConstrData( constrData, entities, true )
+	LocalToLocalConstrData( constrData, nil, entities, true )
 
 	applyObjectsInfo( objectsInfo )
 
@@ -485,9 +600,7 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 	end
 
 	-- Attach the constraint positions to newEnt
-	LocalToWorldConstrData( constrData, true )
-
-	WorldToLocalConstrData( constrData, { newEnt, newEnt }, true )
+	LocalToLocalConstrData( constrData, { newEnt, newEnt }, nil, true )
 
 	if not ( otherEnt:IsWorld() or BuildDupeInfo ) then
 		objectsInfo[otherEnt] = saveObjectInfo( otherEnt, otherEnt:GetPhysicsObject(), true, true ) -- TODO: check if this should save motion or not
@@ -499,14 +612,147 @@ local function restoreConstrLocalBehaviorAfterEntChange( constrData, BuildDupeIn
 
 	overwriteInfoFromConstrCreationTime( BuildDupeInfo, entKeys, entities )
 
-	LocalToWorldConstrData( constrData, true )
-	WorldToLocalConstrData( constrData, entities, true )
+	LocalToLocalConstrData( constrData, entities, nil, true )
 
 	applyObjectsInfo( objectsInfo )
 
 	return true
 
 end
+
+
+-- The replaced entity had specific transforms at constraint creation time, which might be different than its current ones
+-- The difference between those transforms must be inherited by either the new entity or the other entity.
+local function inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone )
+
+	local replacedPhys	= replacedBone and ( replacedEnt:GetPhysicsObjectCount() > 1 ) and replacedEnt:GetPhysicsObjectNum( replacedBone )
+	replacedPhys		= IsValid( replacedPhys ) or nil
+	local from			= replacedPhys and replacedPhys:GetPositionMatrix() or replacedEnt:GetWorldTransformMatrix()
+	local to			= replacedPhys and mats[replacedPhys] or mats[replacedEnt]
+
+	if from ~= to then
+		-- Find the entity that can move, if any.
+		local correctedEnt = ( not newEnt:IsWorld() ) and newEnt or ( not otherEnt:IsWorld() ) and otherEnt or nil
+		if not correctedEnt then return end
+		local isOther = correctedEnt == otherEnt
+
+		-- Get the correction. It's different depending on which entity it's applied on.
+		if isOther then from, to = to, from end
+		local correction = to * from:GetInverseTR()
+
+		-- Get the new transform for the entity that got corrected.
+		mats[correctedEnt] = correction * ( mats[correctedEnt] or correctedEnt:GetWorldTransformMatrix() )
+
+		-- Get the new transform for the bone (physobj) that got corrected, if needed.
+		if correctedEnt:GetPhysicsObjectCount() > 1 then
+			local correctedPhys = correctedEnt:GetPhysicsObjectNum( isOther and otherBone or newBone )
+			-- TODO: might need to return from here if invalid phys? need to test if the constraint breaks or won't get created or something else if we keep going
+			if IsValid( correctedPhys ) then
+				mats[correctedPhys] = correction * ( mats[correctedPhys] or correctedPhys:GetPositionMatrix() )
+			end
+		end
+	end
+
+	return true
+end
+
+
+local function restoreConstrLocalBehaviorAfterEntChangeV2( constrData, BuildDupeInfo, replacedEnt, replacedBone, replacedEntIndex, entKeys, boneKeys )
+
+	local replacedEntKey, replacedBoneKey	= entKeys[replacedEntIndex], boneKeys[replacedEntIndex]
+	local newEnt, newBone					= constrData[replacedEntKey], constrData[replacedBoneKey]
+
+	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or ( replacedEnt == newEnt and replacedBone == newBone ) then return end
+
+	constrData[replacedEntKey],	constrData[replacedBoneKey] = replacedEnt, replacedBone
+
+	local otherEntIndex = 1 + replacedEntIndex % 2
+	local otherEnt		= constrData[entKeys[otherEntIndex]] or game.GetWorld()
+	local otherBone		= constrData[boneKeys[otherEntIndex]] or 0
+
+	-- Get the positions and angles the old entities must be at during constraint creation
+	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrData, entKeys, boneKeys )
+	if not mats then return end
+
+	-- Do as if the new entity had the replaced entity transforms then make the constraint data local to the new entity
+	mats[newEnt] = mats[replacedEnt]
+	LocalToLocalConstrData( constrData, { newEnt, newEnt }, mats, true )
+	mats[newEnt] = nil
+
+	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone ) then return end
+
+	local entities	= { [replacedEntIndex] = newEnt, [otherEntIndex] = otherEnt }
+
+	LocalToLocalConstrData( constrData, entities, mats, true )
+
+	overwriteInfoFromConstrCreationTimeV2( BuildDupeInfo, mats, entities, { [replacedEntIndex] = newBone, [otherEntIndex] = otherBone } )
+
+end
+
+local function restoreConstrWorldBehaviorAfterEntChangeV2( constrData, BuildDupeInfo, replacedEnt, replacedBone, replacedEntIndex, entKeys, boneKeys )
+
+	local replacedEntKey, replacedBoneKey	= entKeys[replacedEntIndex], boneKeys[replacedEntIndex]
+	local newEnt, newBone					= constrData[replacedEntKey], constrData[replacedBoneKey]
+
+	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or ( replacedEnt == newEnt and replacedBone == newBone ) then return end
+
+	constrData[replacedEntKey],	constrData[replacedBoneKey] = replacedEnt, replacedBone
+
+	local otherEntIndex = 1 + replacedEntIndex % 2
+	local otherEnt		= constrData[entKeys[otherEntIndex]] or game.GetWorld()
+	local otherBone		= constrData[boneKeys[otherEntIndex]] or 0
+
+	-- Get the positions and angles the old entities must be at during constraint creation
+	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrData, entKeys, boneKeys )
+	if not mats then return end
+
+	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone ) then return end
+
+	local entities = { [replacedEntIndex] = newEnt, [otherEntIndex] = otherEnt }
+
+	LocalToLocalConstrData( constrData, mats, entities, true  )
+
+	overwriteInfoFromConstrCreationTimeV2( BuildDupeInfo, mats, entities, { [replacedEntIndex] = newBone, [otherEntIndex] = otherBone } )
+
+end
+
+
+local function restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, replacedEnt, replacedBone, replacedEntIndex, entKeys, boneKeys, preserveLocalBehavior )
+
+	local replacedEntKey, replacedBoneKey	= entKeys[replacedEntIndex], boneKeys[replacedEntIndex]
+	local newEnt, newBone					= constrData[replacedEntKey], constrData[replacedBoneKey]
+
+	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or ( replacedEnt == newEnt and replacedBone == newBone ) then return end
+
+	constrData[replacedEntKey],	constrData[replacedBoneKey] = replacedEnt, replacedBone
+
+	local otherEntIndex = 1 + replacedEntIndex % 2
+	local otherEnt		= constrData[entKeys[otherEntIndex]] or game.GetWorld()
+	local otherBone		= constrData[boneKeys[otherEntIndex]] or 0
+
+	-- Get the positions and angles the old entities must be at during constraint creation
+	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrData, entKeys, boneKeys )
+	if not mats then return end
+
+	if preserveLocalBehavior then
+		-- Do as if the new entity had the replaced entity transforms then make the constraint data local to the new entity
+		mats[newEnt] = mats[replacedEnt]
+		LocalToLocalConstrData( constrData, { newEnt, newEnt }, mats, true )
+		mats[newEnt] = nil
+	end
+
+	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone ) then return end
+
+	local entities	= { [replacedEntIndex] = newEnt, [otherEntIndex] = otherEnt }
+
+	LocalToLocalConstrData( constrData, entities, mats, true )
+
+	overwriteInfoFromConstrCreationTimeV2( BuildDupeInfo, mats, entities, { [replacedEntIndex] = newBone, [otherEntIndex] = otherBone } )
+
+end
+
+
+
 
 
 -- Attempts to modify data so that a new constraint created using constrData preserves a certain behavior despite having changed entities:
@@ -520,8 +766,9 @@ local function restoreConstrBehaviorAfterEntsChange( replacedEnts, constrData, B
 
 	if not ( replacedEnts and constrData ) then return end
 
-	local entKeys, boneKeys = ConstraintEditor.GetConstrEntBonePosKeys( constrData )
-	local update = false
+	local entKeys	= ConstraintEditor.GetConstrEntKeys( constrData )
+	local boneKeys	= ConstraintEditor.GetConstrBoneKeys( constrData )
+	local update	= false
 
 	-- TODO: try to make the two functions be a single one??
 	local transferFunc = transferMode == 1 and restoreConstrWorldBehaviorAfterEntChange or transferMode == 2 and restoreConstrLocalBehaviorAfterEntChange
@@ -542,9 +789,9 @@ end
 -- Returns updated constrData, can recreate constr
 local function changeConstrEnts( entChange, constr, ply, delete )
 
-	local constrData = ConstraintEditor.GetConstrData( constr )
-	local entKeys = ConstraintEditor.GetConstrEntBonePosKeys( constrData )
-	local update = false
+	local constrData	= ConstraintEditor.GetConstrData( constr )
+	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrData )
+	local update		= false
 
 	for i, entKey in pairs( entKeys ) do
 

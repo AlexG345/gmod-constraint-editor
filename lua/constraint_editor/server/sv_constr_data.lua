@@ -133,9 +133,10 @@ function ConstraintEditor.GetConstrArgDefault( arg, constrType )
 	if constrType then
 		local t = specificConstrArgsDefaults[constrType]
 		value = t and t[arg]
+		if value == nil then value = constrArgsDefaults[arg] end
+	else
+		value = constrArgsDefaults[arg]
 	end
-
-	if value == nil then value = constrArgsDefaults[arg] end
 
 	-- TODO: check why we copy color but not vector?
 	if IsColor( value ) then value = value:Copy() end
@@ -334,39 +335,91 @@ function ConstraintEditor.GetConstrData( v, numerical, str )
 end
 
 
--- Get the names of the arguments corresponding to entities and local positions
+
+-- Get the names of the arguments corresponding to entities
 --
 -- Argument:
---	constrData (table): Constraint data that must use string keys
+--	constrLike (Entity | table): Constraint entity or constraint data that uses string keys
 --
 -- Returns:
---	entKeys (table): a sequential table that contains:
+--	(table): a table that contains:
 --		the key of the first entity the constraint is linked to
 --		the key of the second entity the constraint is linked to
---	posKeys (table): a sequential table that contains:
+function ConstraintEditor.GetConstrEntKeys( constrLike )
+	return {
+		constrLike.Ent1 and "Ent1" or nil,
+		constrLike.Ent2 and "Ent2" or constrLike.Ent4 and "Ent4" or nil
+	}
+end
+
+
+-- Get the names of the arguments corresponding to entities
+--
+-- Argument:
+--	constrLike (Entity | table): Constraint entity or constraint data that uses string keys
+--
+-- Returns:
+--	(table): a table that contains:
+--		the key of the first bone index the constraint is linked to
+--		the key of the second bone index the constraint is linked to
+function ConstraintEditor.GetConstrBoneKeys( constrLike )
+	return {
+		constrData.Bone and "Bone" or constrData.Bone1 and "Bone1" or nil,
+		constrData.Bone2 and "Bone2" or constrData.Bone4 and "Bone4" or nil
+	}
+end
+
+
+-- Get the names of the arguments corresponding to local positions
+--
+-- Argument:
+--	constrLike (Entity | table): Constraint entity or constraint data that uses string keys
+--
+-- Returns:
+--	(table): a sequential table that contains:
 --		a table containing the keys of the positions that are local to the first entity
 --		a table containing the keys of the positions that are local to the second entity
-function ConstraintEditor.GetConstrEntBonePosKeys( constrData )
-	local ent1, ent2, ent4 = constrData.Ent1, constrData.Ent2, constrData.Ent4
-	local bone, bone1, bone2, bone4 = constrData.Bone, constrData.Bone1, constrData.Bone2, constrData.Bone4
-	local LPos1, LPos2, LPos4, LPos, LocalAxis = constrData.LPos1, constrData.LPos2, constrData.LPos4, constrData.LPos, constrData.LocalAxis
-	local entKeys = {
-		ent1 and "Ent1" or nil,
-		ent2 and "Ent2" or ent4 and "Ent4" or nil
-	}
-	local boneKeys = {
-		bone and "Bone" or bone1 and "Bone1" or nil,
-		bone2 and "Bone2" or bone4 and "Bone4" or nil
-	}
-	local posKeys = {
+function ConstraintEditor.GetConstrPosKeys( constrLike )
+	return {
 		{
-			LPos1 and "LPos1" or nil,
-			LocalAxis and "LocalAxis" or nil
+			constrLike.LPos1 and "LPos1" or nil,
+			constrLike.LocalAxis and "LocalAxis" or nil
 		},
 		{
-			LPos2 and "LPos2" or LPos4 and "LPos4" or LPos and "LPos" or nil
+			constrLike.LPos2 and "LPos2" or constrLike.LPos4 and "LPos4" or constrLike.LPos and "LPos" or nil
 		}
 	}
-
-	return entKeys, boneKeys, posKeys
 end
+
+
+-- function ConstraintEditor.GetConstrEntsBonesInfo( constrLike )
+
+-- 	local boneKeys		= ConstraintEditor.GetConstrBoneKeys( constrLike )
+-- 	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrLike )
+-- 	local constrInfo	= {}
+
+-- 	for i, entKey in ipairs( entKeys ) do
+
+-- 		local boneKey = boneKeys[i]
+
+-- 		if entKey or boneKey then
+
+-- 			local info		= {}
+-- 			constrInfo[i]	= info
+
+-- 			if boneKey then
+-- 				info.boneKey	= boneKey
+-- 				info.bone		= constrLike[boneKey]
+-- 			end
+
+-- 			if entKey then
+-- 				info.entKey	= entKey
+-- 				info.ent	= constrLike[entKey]
+-- 			end
+
+-- 		end
+-- 	end
+
+-- 	return constrInfo, entKeys, boneKeys
+
+-- end

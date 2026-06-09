@@ -1,6 +1,6 @@
 
 -- Surface constraints data is a table used for the menus and HUD clientside
--- It is structured like that (constrType -> constrID = creation ID -> information):
+-- It is structured like that (constraint type -> constraint creation ID -> information):
 --
 --	surfaceConstrsData = {
 --		constrType_1 = {
