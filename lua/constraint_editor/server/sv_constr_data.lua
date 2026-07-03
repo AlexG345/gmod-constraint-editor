@@ -116,6 +116,9 @@ local specificConstrArgsDefaults = {
 	Weld = {
 		nocollide = false
 	},
+	WireHydraulic = {
+		MyCrtl = -1
+	}
 }
 
 -- Gets the default value for a constraint duplicator argument, optionally considering the constraint type (Rope, Weld, ...)
@@ -364,8 +367,8 @@ end
 --		the key of the second bone index the constraint is linked to
 function ConstraintEditor.GetConstrBoneKeys( constrLike )
 	return {
-		constrData.Bone and "Bone" or constrData.Bone1 and "Bone1" or nil,
-		constrData.Bone2 and "Bone2" or constrData.Bone4 and "Bone4" or nil
+		constrLike.Bone and "Bone" or constrLike.Bone1 and "Bone1" or nil,
+		constrLike.Bone2 and "Bone2" or constrLike.Bone4 and "Bone4" or nil
 	}
 end
 
@@ -390,36 +393,3 @@ function ConstraintEditor.GetConstrPosKeys( constrLike )
 		}
 	}
 end
-
-
--- function ConstraintEditor.GetConstrEntsBonesInfo( constrLike )
-
--- 	local boneKeys		= ConstraintEditor.GetConstrBoneKeys( constrLike )
--- 	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrLike )
--- 	local constrInfo	= {}
-
--- 	for i, entKey in ipairs( entKeys ) do
-
--- 		local boneKey = boneKeys[i]
-
--- 		if entKey or boneKey then
-
--- 			local info		= {}
--- 			constrInfo[i]	= info
-
--- 			if boneKey then
--- 				info.boneKey	= boneKey
--- 				info.bone		= constrLike[boneKey]
--- 			end
-
--- 			if entKey then
--- 				info.entKey	= entKey
--- 				info.ent	= constrLike[entKey]
--- 			end
-
--- 		end
--- 	end
-
--- 	return constrInfo, entKeys, boneKeys
-
--- end

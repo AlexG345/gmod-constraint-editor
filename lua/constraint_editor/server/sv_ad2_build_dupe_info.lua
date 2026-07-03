@@ -1,94 +1,3 @@
--- Calculates the final world transform matrices without moving any entities.
--- Will always return all the bone positions
--- Uses current entities and physobj transforms in case info is missing
--- Returns:
---	matrix1 (VMatrix):
---	matrix2 (VMatrix):
--- local function getMatricesFromConstrCreationTime( BuildDupeInfo, constrData, entKeys )
-
--- 	if not BuildDupeInfo then return nil end
-
--- 	entKeys = entKeys or ConstraintEditor.GetConstrEntKeys( constrData )
--- 	local boneKeys
-
--- 	local mats		= {}
-
--- 	for i, entKey in pairs( entKeys ) do
-
--- 		local entStr	= "Ent" .. i
--- 		local ent		= constrData[entKey]
--- 		local entPos, entAngles
-
-
--- 		if i == 1 then
--- 			entPos = BuildDupeInfo[entStr .. "Pos"]
--- 		elseif BuildDupeInfo.Ent1Pos and BuildDupeInfo.EntityPos then
--- 			entPos = BuildDupeInfo.Ent1Pos - BuildDupeInfo.EntityPos
--- 		end
--- 		entAngles = BuildDupeInfo[entStr .. "Ang"]
-
--- 		local foundValuesForEnt		= entAngles or entPos
-
--- 		if foundValuesForEnt then
--- 			local entMat = Matrix()
--- 			entMat:SetTranslation( entPos or ent:GetPos() )
--- 			entMat:SetAngles( entAngles or ent:GetAngles() )
--- 			mats[i] = { ent = entMat }
--- 		end
-
--- 		if ent:GetPhysicsObjectCount() <= 1 then continue end
-
--- 		local boneStr	= "Bone" .. i
--- 		local bone		= BuildDupeInfo[boneStr]
--- 		local bonePos, boneAngles
-
-
--- 		if bone then
--- 			-- If the bone has no saved values then it must use the same values as the ent's SAVED ones
--- 			boneAngles	= BuildDupeInfo[boneStr .. "Angle"] or entAngles
--- 			bonePos		= BuildDupeInfo[boneStr .. "Pos"]
--- 			-- If the bone has a saved position then it's relative to the entity
--- 			if bonePos then
--- 				bonePos = bonePos + ( entPos or ent:GetPos() )
--- 			else
--- 				bonePos = entPos
--- 			end
--- 		end
-
--- 		-- Early stop if we didn't find any saved values for the bone
--- 		if not ( boneAngles or bonePos ) then continue end
-
--- 		if boneAngles and bonePos then
--- 			local boneMat = Matrix()
--- 			boneMat:SetAngles( boneAngles )
--- 			boneMat:SetTranslation( bonePos )
--- 			mats[i].bone = boneMat
--- 			continue
--- 		end
-
--- 		-- Must access the physics object to prevent having an incomplete matrix
--- 		if not bone then
--- 			boneKeys		= boneKeys or ConstraintEditor.GetConstrBoneKeys( constrData )
--- 			local boneKey	= boneKeys[i]
--- 			bone			= boneKey and constrData[boneKey]
--- 		end
--- 		if not bone then continue end
-
--- 		local phys = ent:GetPhysicsObjectNum( constrData[boneKey] )
--- 		if not IsValid( phys ) then continue end
-
--- 		local boneMat = Matrix()
--- 		boneMat:SetAngles( boneAngles or phys:GetAngles() )
--- 		boneMat:SetTranslation( bonePos or phys:GetPos() )
--- 		mats[i].bone = boneMat
-
--- 	end
-
--- 	return mats
-
--- end
-
-
 -- Arguments:
 --	BuildDupeInfo (table): from advdupe2
 --
@@ -147,10 +56,49 @@ function ConstraintEditor.GetTransformsSavedAtConstrCreation( BuildDupeInfo )
 end
 
 
+-- Puts entities back to the position and angles they were in relative to each other upon constraint creation
+-- TODO: check why when world is involved, it doesn't always work as intended, and if it can be fixed.
+function ConstraintEditor.ApplyTransformsSavedAtConstrCreation( BuildDupeInfo, constrData )
+
+	local entKeys = ConstraintEditor.GetConstrEntKeys( constrData )
+
+	local restoreMats, restoreMotions = {}, {}
+
+	local entsTransforms = ConstraintEditor.GetTransformsSavedAtConstrCreation( BuildDupeInfo ) or {}
+
+	for i, transform in pairs( entsTransforms ) do
+
+		local ent = constrData[entKeys[i]] or constrData[i]
+		if IsValid( ent ) then
+
+			restoreMats[ent] = ent:GetWorldTransformMatrix()
+			if transform.entPos then ent:SetPos( transform.entPos ) end
+			if transform.entAngles then ent:SetAngles( transform.entAngles ) end
+
+			local phys = transform.bone and ent:GetPhysicsObjectNum( transform.bone )
+			if IsValid( phys ) then
+				restoreMats[phys] = phys:GetPositionMatrix()
+				restoreMotions[phys] = phys:IsMotionEnabled()
+				phys:EnableMotion( false )
+				if transform.bonePos then phys:SetPos( transform.bonePos ) end
+				if transform.boneAngles then phys:SetAngles( transform.boneAngles ) end
+			end
+
+		end
+
+	end
+
+	return restoreMats, restoreMotions
+
+end
+
+
+
 -- Gets the transforms each entity / phys obj should have to recreate the constraint 'identically'
+-- We could use BuildDupeInfo directly but this returns a ready-to-use table (obj -> its matrix)
 --
 -- Returns:
---	mats (table): Table whose keys are entities or phys objs and values are matrixes representing the transforms they should have during constraint creation
+--	mats (table): Table whose keys are entities or phys objs and values are matrices representing the transforms they should have during constraint creation
 function ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrData, entKeys )
 
 	if not BuildDupeInfo then return end
