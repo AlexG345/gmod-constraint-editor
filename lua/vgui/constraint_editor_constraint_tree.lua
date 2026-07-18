@@ -26,7 +26,7 @@ function PANEL:Init()
 
 	self.hiddenColor	= Color( 100, 100, 100, 100 )
 
-	self.constrNodes = {}
+	self.constrNodes	= {}
 
 	self.defaultIcon	= "icon16/cog_add.png"
 
@@ -68,8 +68,6 @@ function PANEL:RegisterConstrType( constrType )
 			end
 		end
 	end
-
-	print("add", constrType, "hidden:", ConstraintEditor.HiddenConstrTypes[constrType] )
 
 
 end

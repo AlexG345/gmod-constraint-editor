@@ -49,7 +49,6 @@ local function LocalToLocalConstrData( constrData, mats, newEntities )
 		for _, posKey in pairs( posKeys[i] ) do
 
 			local localPos = constrData[posKey]
-			print( "Poskey:", posKey)
 			constrData[posKey] = transform * localPos
 
 		end
@@ -74,6 +73,8 @@ local function overwriteInfoFromConstrCreationTime( BuildDupeInfo, mats, entitie
 
 	local entCount = #entities
 	if not IsValid( entities[1] ) then return end
+
+	if entities[2] and entities[1] == entities[2] then return end
 
 	for i, ent in ipairs( entities ) do
 
@@ -146,7 +147,7 @@ local function inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, re
 		if isOther then from, to = to, from end
 		local correction = to * from:GetInverseTR()
 
-		-- Get the new transform for the entity that got corrected.
+		-- Save the new transform for the entity that got corrected.
 		mats[correctedEnt] = correction * ( mats[correctedEnt] or correctedEnt:GetWorldTransformMatrix() )
 
 		-- Get the new transform for the bone (physobj) that got corrected, if needed.
@@ -165,53 +166,52 @@ local function inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, re
 end
 
 
+-- Arguments:
+--	newConstrData (table): Table with the new values EXCEPT entities and bones
+local function restoreConstrBehaviorAfterEntChange(
+		newConstrData, BuildDupeInfo,
+		entIndex, replacement,
+		entKeys, boneKeys,
+		preserveLocalBehavior
+	)
 
-local function restoreConstrBehaviorAfterEntChange( constrData, BuildDupeInfo, replacedEnt, replacedBone, replacedEntIndex, entKeys, boneKeys, preserveLocalBehavior )
+	local oldEnt, oldBone	= replacement.old.ent, replacement.old.bone
+	local newEnt, newBone	= replacement.new.ent, replacement.new.bone
+	--local entKey, boneKey	= entKeys[entIndex], boneKeys[entIndex]
 
-	local replacedEntKey, replacedBoneKey	= entKeys[replacedEntIndex], boneKeys[replacedEntIndex]
-	local newEnt, newBone					= constrData[replacedEntKey], constrData[replacedBoneKey]
+	if not ( isentity( oldEnt ) and isentity( newEnt ) ) or ( oldEnt == newEnt and oldBone == newBone ) then return end
 
-	print( replacedEntKey, replacedEnt, newEnt, replacedBoneKey, replacedBone, newBone )
-
-	if not ( isentity( replacedEnt ) and isentity( newEnt ) ) or ( replacedEnt == newEnt and replacedBone == newBone ) then return end
-
-	constrData[replacedEntKey],	constrData[replacedBoneKey] = replacedEnt, replacedBone
-
-	local otherEntIndex = 1 + replacedEntIndex % 2
-	local otherEnt		= constrData[entKeys[otherEntIndex]] or game.GetWorld()
-	local otherBone		= constrData[boneKeys[otherEntIndex]] or 0
+	local otherEntIndex = 1 + entIndex % 2
+	local otherEnt		= newConstrData[entKeys[otherEntIndex]] or game.GetWorld()
+	local otherBone		= newConstrData[boneKeys[otherEntIndex]] or 0
 
 	-- Get the positions and angles the old entities must be at during constraint creation
-	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrData, entKeys, boneKeys )
+	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, newConstrData, entKeys, boneKeys )
 	if not mats then return end
 
 	if preserveLocalBehavior then
 		-- Do as if the new entity had the replaced entity transforms then make the constraint data local to the new entity
-		mats[newEnt] = mats[replacedEnt]
-		LocalToLocalConstrData( constrData, mats, { newEnt, newEnt } )
+		mats[newEnt] = mats[oldEnt]
+		LocalToLocalConstrData( newConstrData, mats, { newEnt, newEnt } )
 		mats[newEnt] = nil
-
 	end
 
-	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone ) then
-		print( "[debug] restoreConstrBehaviorAfterEntChange" )
-		print( "inheritCorrection failed !" )
-		PrintTable( BuildDupeInfo )
+	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, oldEnt, oldBone ) then
 		return
 	end
 
 	if preserveLocalBehavior and not otherEnt:IsWorld() then
-		local newEntCurrentMat = newEnt:GetWorldTransformMatrix()
-		local correction	= replacedEnt:GetWorldTransformMatrix() * newEntCurrentMat:GetInverseTR()
-		mats[newEnt]		= correction * ( mats[newEnt] or newEntCurrentMat )
-		mats[otherEnt]		= correction * mats[otherEnt]
+		local newEntCurrentMat	= newEnt:GetWorldTransformMatrix()
+		local correction		= oldEnt:GetWorldTransformMatrix() * newEntCurrentMat:GetInverseTR()
+		mats[newEnt]			= correction * ( mats[newEnt] or newEntCurrentMat )
+		mats[otherEnt]			= correction * mats[otherEnt]
 	end
 
-	local entities	= { [replacedEntIndex] = newEnt, [otherEntIndex] = otherEnt }
+	local entities	= { [entIndex] = newEnt, [otherEntIndex] = otherEnt }
 
-	LocalToLocalConstrData( constrData, mats, entities )
+	LocalToLocalConstrData( newConstrData, mats, entities )
 
-	overwriteInfoFromConstrCreationTime( BuildDupeInfo, mats, entities, { [replacedEntIndex] = newBone, [otherEntIndex] = otherBone } )
+	overwriteInfoFromConstrCreationTime( BuildDupeInfo, mats, entities, { [entIndex] = newBone, [otherEntIndex] = otherBone } )
 
 end
 
@@ -222,28 +222,50 @@ end
 -- Attempts to modify data so that a new constraint created using constrData preserves a certain behavior despite having changed entities:
 --	with transferMode set to 1: Behavior preservation in World coordinates
 --	with transferMode set to 2: Behavior preservation from replacedEnt to newEnt Local coordinates
-local function restoreConstrBehaviorAfterEntsChange( oldConstrData, constrData, BuildDupeInfo, transferMode )
+local function restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, BuildDupeInfo, transferMode )
 
-	if not ( oldConstrData and constrData ) then return end
+	if not ( constrData and newConstrData ) then return end
 
-	local entKeys	= ConstraintEditor.GetConstrEntKeys( constrData )
-	local boneKeys	= ConstraintEditor.GetConstrBoneKeys( constrData )
+	local entKeys	= ConstraintEditor.GetConstrEntKeys( newConstrData )
+	local boneKeys	= ConstraintEditor.GetConstrBoneKeys( newConstrData )
 	local update	= false
 
 	local preserveLocalBehavior = transferMode == 2
 
-	for i, entKey in pairs( entKeys ) do
+	local replacements = {}
+	for entIndex, entKey in pairs( entKeys ) do
 
-		local boneKey		= boneKeys[i]
-		local replacedEnt	= oldConstrData[entKey]
-		local replacedBone	= boneKey and oldConstrData[boneKey]
+		local boneKey	= boneKeys[entIndex]
+		local oldEnt, oldBone = constrData[entKey], constrData[boneKey]
+
+		replacements[entIndex] = {
+			old	= {
+				ent		= oldEnt,
+				bone	= oldBone
+			},
+			new	= {
+				ent		= newConstrData[entKey],
+				bone	= newConstrData[boneKey]
+			}
+		}
+
+		newConstrData[entKey]	= oldEnt
+		newConstrData[boneKey]	= oldBone
+
+	end
+
+	for entIndex, entKey in pairs( entKeys ) do
 
 		update = restoreConstrBehaviorAfterEntChange(
-			constrData, BuildDupeInfo,
-			replacedEnt, replacedBone, i,
+			newConstrData, BuildDupeInfo,
+			entIndex, replacements[entIndex],
 			entKeys, boneKeys,
 			preserveLocalBehavior
 		) or update
+
+		print("------- done -------")
+		PrintTable( constrData )
+		print("--------------------\n")
 
 	end
 
@@ -305,6 +327,31 @@ end
 --  Actual Constraint Creation  --
 ----------------------------------
 
+local function removeOldConstrIfNeeded( constr, newConstrData )
+
+	local newConstrDataType = newConstrData.Type
+	if newConstrDataType ~= "Weld" and newConstrDataType ~= "NoCollide" then return end
+
+	local comparedKeys = { "Ent1", "Ent2", "Bone1", "Bone2" }
+	for _, k in ipairs( comparedKeys ) do
+		if constr[k] ~= newConstrData[k] then return end
+	end
+
+	local ent = constr.Ent1
+	if not ent.Constraints then return end
+
+	for k, v in pairs( ent.Constraints ) do
+		if v == constr then
+			ent.Constraints[k] = nil
+			constr:Remove()
+			break
+		end
+	end
+
+	-- TODO: delete on break welds, updated to delete on break = false, still delete the 1st entity on 2nd entity removal
+
+end
+
 
 -- Create a constraint like the duplicator does
 --
@@ -346,12 +393,15 @@ end
 -- TODO: Check if 'redundant ent motion disabling' can be solved (won't have much impact)
 local function createConstrAccurate( constrType, constrData, BuildDupeInfo, duplicatorFunc, ply )
 
+	-- TODO BUG IMPORTANT: Spawn two barrels, use a rope between them, select barrel 1, transfer to barrel 2, then select barrel 2, transfer to barrel 1. Barrel 1 goes to barrel 2 pos.
+	-- IDEA: delete the whole code and restart from 0 since this error has literally no cause it's just here to annoy me as usual
+
 	local restoreMats, restoreMotions = ConstraintEditor.ApplyTransformsSavedAtConstrCreation( BuildDupeInfo, constrData )
 
 	ConstraintEditor.TransformConstrDataKeys( constrData, nil, true ) -- use numerical keys
 	local constr, rope = createConstrBlindly( duplicatorFunc, constrData, ply, constrType )
 
-	if constr and BuildDupeInfo then constr.BuildDupeInfo = table.Copy( BuildDupeInfo ) end
+	if constr and BuildDupeInfo then constr.BuildDupeInfo = copyInfoFromConstrCreationTime( BuildDupeInfo ) end
 
 	for obj, mat in pairs( restoreMats ) do
 		obj:SetAngles( mat:GetAngles() )
@@ -466,6 +516,9 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 	for _, constr in pairs( constrs ) do
 
 		local constrData, desc = ConstraintEditor.GetConstrData( constr )
+
+		-- We need a copy of the new values for each constraint since most of the
+		-- time these have to be completed with the old values specific to each constraint
 		local newConstrDataCopy = {}
 		for k, v in pairs( newConstrData ) do
 			newConstrDataCopy[k] = v
@@ -480,6 +533,8 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 		local BuildDupeInfo = copyInfoFromConstrCreationTime( constr.BuildDupeInfo )
 
 		if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrDataCopy, BuildDupeInfo, transferMode ) end
+
+		removeOldConstrIfNeeded( constr, newConstrDataCopy )
 
 		constrsReplacements[constr] = ConstraintEditor.CreateConstr( newConstrDataCopy, BuildDupeInfo, desc.Func, ply, not delete, not delete )
 
@@ -509,7 +564,8 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 		net.Send( ply )
 	end
 
-	local newConstrs, deletedConstrs = {}, {}
+	local newConstrs = {}
+	-- local deletedConstrs = {}
 
 	for constr, newConstr in pairs( constrsReplacements ) do
 
@@ -523,10 +579,10 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 
 
 		if delete then
-			local constrID = constr:GetCreationID()
-			deletedConstrs[constrID] = true
-			ConstraintEditor.constrs[constrID] = nil
-			SafeRemoveEntity( constr )
+			-- local constrID = constr:GetCreationID()
+			-- deletedConstrs[constrID] = true
+			-- ConstraintEditor.constrs[constrID] = nil
+			constr:Remove() -- TODO: the line above should be handled by the call on remove, do we keep it or not?
 		end
 
 	end
@@ -538,8 +594,8 @@ function ConstraintEditor.ReplaceConstrs( constrsReplacements, ply, delete, setE
 		if ConstraintEditor.NetStartWrite( NT.SELECT_CONSTRS, ply ) then
 			ConstraintEditor.NetWriteConstrIDs( newConstrs )
 			net.WriteString( constrType )
-			-- TODO: check if deselecting the constraints that are about to be deleted is truly needed
-			ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
+			-- TODO IMPORTANT: check if deselecting the constraints that are about to be deleted is truly needed
+			-- ConstraintEditor.NetWriteConstrIDs( deletedConstrs )
 			net.Send( ply )
 		end
 

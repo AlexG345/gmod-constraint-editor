@@ -168,11 +168,31 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 			t.dataType = selectionDataType
 		end
 
-		-- Select the given IDs if the data type matches
+		-- Add the given IDs to the selection if the data type matches
 		if t.dataType == selectionDataType then
+
+			local count			= table.Count( IDs )
+			local maxCountCVar	= GetConVar( "sv_constraint_editor_max_edit" )
+			local maxCount		= maxCountCVar and maxCountCVar:GetInt() or 2048
+
 			for _, ID in pairs( selection ) do
-				IDs[ID] = true
+
+				if count >= maxCount then
+					local ply = LocalPlayer()
+					if ply then
+						ply:EmitSound( "buttons/button10.wav", 75, 100, 0.35 )
+						ConstraintEditor.ChatPrint( "You cannot select more than ", maxCount, " constraint", maxCount > 1 and "s." or "." )
+					end
+					break
+				end
+
+				if not IDs[ID] then
+					count = count + 1
+					IDs[ID] = true
+				end
+
 				self.constraintTree:VisualSelectConstrNode( ID, true )
+
 			end
 		end
 	end
@@ -244,9 +264,6 @@ end
 
 
 function PANEL:UnregisterConstrs( constrIDs )
-
-	print( "browser unregistering:" )
-	PrintTable( constrIDs )
 
 	local t = { self:SelectIDs( nil, nil, constrIDs ) }
 

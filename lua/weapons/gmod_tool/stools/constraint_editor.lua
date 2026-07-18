@@ -20,12 +20,12 @@ if CLIENT then
 		{ name = "left0",		stage = 0 },
 		{ name = "left",		stage = 1 },
 		{ name = "left",		stage = 2 },
-		{ name = "left_shift",	stage = 1,	icon2 = "icon16/arrow_up.png",	icon = "gui/lmb.png" },
-		{ name = "left_shift",	stage = 2,	icon2 = "icon16/arrow_up.png",	icon = "gui/lmb.png" },
+		{ name = "left_shift",	stage = 1,	icon = "gui/lmb.png" },
+		{ name = "left_shift",	stage = 2,	icon = "gui/lmb.png" },
 		{ name = "right",		stage = 1 },
 		{ name = "right",		stage = 2 },
-		{ name = "right_shift",	stage = 1,	icon2 = "icon16/arrow_up.png",	icon = "gui/rmb.png" },
-		{ name = "right_shift",	stage = 2,	icon2 = "icon16/arrow_up.png",	icon = "gui/rmb.png" },
+		{ name = "right_shift",	stage = 1,	icon = "gui/rmb.png" },
+		{ name = "right_shift",	stage = 2,	icon = "gui/rmb.png" },
 		{ name = "reload1",		stage = 1 },
 		{ name = "reload2",		stage = 2 },
 		--{ name = "reload1_use", stage = 1 },
@@ -39,7 +39,8 @@ if CLIENT then
 		["hud_show_halos"]		= 1,
 		["hud_beam_width_min"]	= 1,
 		["hud_icon_size"]		= 12,
-		["transfer_mode"]		= 1
+		["transfer_mode"]		= 1,
+		["transfer_delete"]		= 1,
 	}
 
 	local t = "tool." .. mode .. "."
@@ -55,12 +56,12 @@ if CLIENT then
 	l( "0" )
 	l( "left0", "Select an entity, letting you see its constraints" )
 	l( "left", "Set selection to a single constraint/entity" )
-	l( "left_shift", ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Expand your constraint/entity selection" )
+	l( "left_shift", "+ " .. ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Select or unselect a constraint/entity without clearing your selection" )
 	-- l( "shift", "Press " .. ( input.LookupBinding( "+speed" ) or "Sprint" ) .. " to not clear selection on left click" )
 	l( "right", "Delete the constraint you're looking at, or clear your selection" )
-	l( "right_shift", ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Stop viewing all constraints of the entity you're looking at" )
-	l( "reload1", "TRANSFER all constraints from your entity selection to the entity you're looking at" )
-	l( "reload2", "TRANSFER selected constraint(s) to the entity you're looking at" )
+	l( "right_shift", "+ " .. ( input.LookupBinding( "+speed" ) or "Sprint" ) .. ": Unselect all constraints linked to the entity you're looking at" )
+	l( "reload1", "Transfer all constraints from your entity selection to the entity you're looking at" )
+	l( "reload2", "Transfer selected constraint(s) to the entity you're looking at" )
 	--l( "reload1_use", "Transfer all constraints from the edited entity to the one you're looking at" )
 	--l( "reload2_use", "Transfer selected constraint from the edited entity to the one you're looking at" )
 

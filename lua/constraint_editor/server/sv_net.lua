@@ -74,7 +74,15 @@ end
 
 local function getNetConstrs( ply, constrCount )
 
-	constrCount			= constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
+	local maxConstrCountCVar	= GetConVar( "sv_constraint_editor_max_edit" )
+	local maxConstrCount		= maxConstrCountCVar and maxConstrCountCVar:GetInt() or 2048
+
+	-- The max constraint count includes invalid constraints.
+	-- This is to stop the server from processing thousands
+	-- of invalid constraints even with a low max constr count
+	constrCount = constrCount or net.ReadUInt( BIT_COUNT.ENT_ID )
+	if constrCount > maxConstrCount then constrCount = maxConstrCount end
+
 	local minConstrID	= net.ReadUInt( BIT_COUNT.CREATION_ID )
 	local diffBitCount	= net.ReadUInt( BIT_COUNT.BIT_COUNT_CREATION_ID )
 
@@ -103,12 +111,12 @@ local function getNetConstrs( ply, constrCount )
 		ConstraintEditor.UnregisterConstrIDs( badConstrIDs )
 	end
 
-	print("\n[debug] getNetConstrs")
-	MsgC( Color( 0, 255, 0 ), "\tValid constraints:\n" )
-	PrintTable( validConstrs )
-	MsgC( Color( 255, 0, 0 ), "\n\tInvalid constraints:\n" )
-	PrintTable( badConstrIDs )
-	print("")
+	-- print("\n[debug] getNetConstrs")
+	-- MsgC( Color( 0, 255, 0 ), "\tValid constraints:\n" )
+	-- PrintTable( validConstrs )
+	-- MsgC( Color( 255, 0, 0 ), "\n\tInvalid constraints:\n" )
+	-- PrintTable( badConstrIDs )
+	-- print("")
 
 	return validConstrs, validConstrCount
 end
@@ -202,8 +210,13 @@ ConstraintEditor.netFunctions = {
 		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
 
 		ConstraintEditor.FillEditorWithConstr( nil, ply )
-		-- try transferring and stop once it's done once? (for k ,v ... do if change then return end end)
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, false )
+
+		local delete
+		if ply then
+			local tool = ConstraintEditor.GetTool( ply )
+			delete = tool and tool:GetClientBool( "transfer_delete", true )
+		end
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
 		return newEnt, constrs
 
@@ -221,7 +234,13 @@ ConstraintEditor.netFunctions = {
 		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts )
 
 		ConstraintEditor.FillEditorWithConstr( nil, ply )
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, false )
+
+		local delete
+		if ply then
+			local tool = ConstraintEditor.GetTool( ply )
+			delete = tool and tool:GetClientBool( "transfer_delete", true )
+		end
+		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
 
 		return newEnt

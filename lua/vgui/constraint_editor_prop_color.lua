@@ -29,12 +29,8 @@ function PANEL:Setup( vars )
 
 	vars = vars or {}
 
-	-- Can't type properly without this set to true
-	-- vars.waitforenter = true
-
 	BaseClass.Setup( self, vars )
 
-	print("AAAA")
 	local text
 	for _, panel in ipairs( self:GetChildren() ) do
 		if panel:GetName() == "DTextEntry" then
@@ -77,7 +73,7 @@ function PANEL:Setup( vars )
 
 		color.Mixer:SetAlphaBar( true )
 		color.Mixer:SetWangs( true )
-		color.Mixer:SetLabel( "Choose constraint color." )
+		color.Mixer:SetLabel( "Choose a color for the constraint(s)." )
 		color.Mixer.label:SetTextColor( Color( 255, 255, 255, 255 ) )
 		color:SetupCloseButton( function() CloseDermaMenus() end )
 		color.OnValueChanged = function( colorCombo, newcol )

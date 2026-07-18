@@ -65,7 +65,7 @@ BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
 
 
 local function netWriteType( v )
-	local t = IsColor( v ) and 255 or TypeID( v )
+	local t = IsColor( v ) and TYPE_COLOR or TypeID( v )
 	net.WriteUInt( t, 8 )
 	ConstraintEditor.netWriteFuncs[t]( v )
 end
@@ -110,7 +110,6 @@ function ConstraintEditor.NetReadTable( seq )
 			tab[ k ] = netReadType()
 		end
 	end
-	print("netreadtable:", tab)
 	return tab
 end
 
@@ -128,7 +127,7 @@ function ConstraintEditor.NetStartWrite( tag )
 
 	if not isnumber( tag ) then return false end
 
-	netDebug( true, true, tag, nil )
+	-- netDebug( true, true, tag, nil )
 
 	net.Start( "constraint_editor_net" )
 

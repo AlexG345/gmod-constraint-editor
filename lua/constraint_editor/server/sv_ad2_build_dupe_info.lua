@@ -28,7 +28,7 @@ function ConstraintEditor.GetTransformsSavedAtConstrCreation( BuildDupeInfo )
 		if foundValuesForEnt then
 			transforms.entPos		= entPos
 			transforms.entAngles	= entAngles
-			entsTransforms[i] = transforms
+			entsTransforms[i]		= transforms
 		end
 
 		local boneStr	= "Bone" .. i
@@ -40,11 +40,10 @@ function ConstraintEditor.GetTransformsSavedAtConstrCreation( BuildDupeInfo )
 			bonePos		= BuildDupeInfo[boneStr .. "Pos"] + entPos -- TODO: this should be fine but are there any cases where a pos given for the bone but not for the entity?
 
 			if bonePos or boneAngles then
-
-				if not foundValuesForEnt then entsTransforms[i] = transforms end
 				transforms.bone			= bone
 				transforms.bonePos		= bonePos
 				transforms.boneAngles	= boneAngles
+				if not foundValuesForEnt then entsTransforms[i] = transforms end
 			end
 
 		end

@@ -1,3 +1,14 @@
+function ConstraintEditor.ChatPrint( ... )
+	chat.AddText(
+		Color( 255, 255, 0 ),
+		"[Constraint Editor]",
+		color_white,
+		" - ",
+		...
+	)
+end
+
+
 ConstraintEditor.dataPerConstrType = {
 	Axis			= { icon = "icon16/cd.png", },
 	-- AdvBallsocket	= { icon = "icon16/sport_shuttlecock.png", },

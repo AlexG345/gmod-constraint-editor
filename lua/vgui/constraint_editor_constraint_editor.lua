@@ -12,6 +12,19 @@ local function customToString( value )
 end
 
 
+local bindArgs = {
+	key				= true,
+	fwd_bind		= true,
+	bwd_bind		= true,
+	numpadkey_fwd	= true,
+	numpadkey_bwd	= true,
+}
+
+local function isBind( arg )
+	return bindArgs[arg]
+end
+
+
 ------------------------------------------------------
 --  Lets you edit some properties from constraints
 --  Does not change the constraints themselves
@@ -90,16 +103,6 @@ function PANEL:Init()
 		[TYPE_ANGLE]	= Angle,
 		[TYPE_VECTOR]	= Vector,
 		[TYPE_COLOR]	= string.ToColor,
-	}
-
-	self.rowTypes = {
-		[TYPE_BOOL]		= "Boolean",
-		-- Float is not used as it's worse than generic (it keeps trying to limit values to a min and max, feature that i didn't ask for)
-		-- it's because it uses a dnumslider internally and those are really annoying when it comes to min/max
-		-- [TYPE_NUMBER]	= "Float",
-
-		-- these property editors are all quite useless aren't they?
-		[TYPE_COLOR]	= "constraint_editor_color",
 	}
 
 	self.copiedProperties = self:GetEmptyProperties()
@@ -207,17 +210,23 @@ function PANEL:CreateRows( properties, dataType )
 
 	for i, arg in ipairs( args ) do
 
-		local rowValue	= values[i]
-		local isColor				= IsColor( rowValue )
-		local rowType				= isColor and TYPE_COLOR or TypeID( rowValue )
+		local rowValue				= values[i]
+		local rowType				= IsColor( rowValue ) and TYPE_COLOR or TypeID( rowValue )
 		local rowTypeRestoreFunc	= self.typeRestoreFuncs[rowType]
+
+		local rowControl	= (
+			( IsColor( rowValue ) and "constraint_editor_color" )
+			or ( isbool( rowValue ) and "Boolean" )
+			or ( isBind( arg ) and "constraint_editor_binder" )
+			or "Generic"
+		)
 
 		local editor = self
 
 		local row = self.Properties:CreateRow( rowName, arg )
 		self.rows[i] = row
 
-			row:Setup( self.rowTypes[rowType] or "Generic", { readonly = not rowTypeRestoreFunc } )
+			row:Setup( rowControl, { readonly = not rowTypeRestoreFunc } )
 
 			function row:DataChanged( v )
 				self:SetValue( v )
