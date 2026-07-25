@@ -122,7 +122,7 @@ function ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, constrDa
 
 		if ent:GetPhysicsObjectCount() <= 1 then continue end
 
-		local bone	= transforms.bone or boneKeys[i]
+		local bone	= transforms.bone or constrData[boneKeys[i]]
 		local phys	= bone and ent:GetPhysicsObjectNum( bone )
 
 		if IsValid( phys ) then

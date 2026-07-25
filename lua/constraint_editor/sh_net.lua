@@ -5,7 +5,7 @@ ConstraintEditor.netTags = {
 	IGNORE_ENTITY			= 3,
 	TOOLGUN_LEFT_CLICK		= 4,
 	TOOLGUN_RIGHT_CLICK		= 5,
-	TOOLGUN_RELOAD	= 6,
+	TOOLGUN_RELOAD			= 6,
 	UPDATE_CONSTRS			= 7,
 	REMOVE_CONSTRS			= 8,
 	DUPLIC_CONSTRS			= 9,
@@ -57,8 +57,9 @@ end
 
 ConstraintEditor.netBitCounts = {
 	TAG			= getUIntBitCount( table.Count( ConstraintEditor.netTags ) - 1 ),
-	ENT_ID		= getUIntBitCount( 8192 ), -- Up to 8192 entities can exist. This means indexes probably go up to 8191, but i use 8192 to be safe (even if it's one more bit)
-	CREATION_ID	= getUIntBitCount( 10000000 ), -- https://wiki.facepunch.com/gmod/Entity:GetCreationID
+	ENT_ID		= getUIntBitCount( 8192 ),		-- Up to 8192 entities can exist. This means indexes probably go up to 8191, but i use 8192 to be safe (even if it's one more bit)
+	CREATION_ID	= getUIntBitCount( 10000000 ),	-- https://wiki.facepunch.com/gmod/Entity:GetCreationID
+	PHYS_NUM	= getUIntBitCount( 128 ),		-- 128 bones per entity max (TODO: needs source)
 }
 local BIT_COUNT = ConstraintEditor.netBitCounts
 BIT_COUNT.BIT_COUNT_CREATION_ID = getUIntBitCount( BIT_COUNT.CREATION_ID )
@@ -206,24 +207,6 @@ function ConstraintEditor.NetWriteConstrIDs( constrIDs, addCount )
 	for constrID, _ in pairs( constrIDs ) do
 		net.WriteUInt( constrID - minConstrID, diffBitCount )
 	end
-
-end
-
-
--- Call this to start listening to net messages
-function ConstraintEditor.HandleNetRequests()
-
-	net.Receive( "constraint_editor_net", function( len, ply )
-
-		if SERVER and not ( ply and ply:IsPlayer() ) then return end
-
-		local tag = net.ReadUInt( BIT_COUNT.TAG )
-		ConstraintEditor.netFunctions[tag]( ply )
-
-		-- local data = { ConstraintEditor.netFunctions[tag]( ply ) }
-		--netDebug( true, false, tag, data )
-
-	end )
 
 end
 

@@ -47,12 +47,23 @@ function PANEL:Init()
 
 
 		local buttonDuplicate	= tileLayout:Add( "DButton")
+		self.buttonDuplicate = buttonDuplicate
 
 		buttonDuplicate:SetImage( "icon16/table_multiple.png" )
 		buttonDuplicate:SetText( "Duplicate Constraints" )
 		buttonDuplicate:SetSize( buttonWidth, buttonHeight )
 
-		function buttonDuplicate:DoClick()
+		function buttonDuplicate.DoClick()
+
+			local maxDuplicateCVar	= GetConVar( "sv_constraint_editor_max_duplicate" )
+			local maxDuplicate		= maxDuplicateCVar and maxDuplicateCVar:GetInt() or 2048
+			if self.selectionData.count > maxDuplicate then
+				local ply = LocalPlayer()
+				if IsValid( ply ) then ply:EmitSound( "buttons/button10.wav", 75, 100, 0.35 ) end
+				ConstraintEditor.ChatPrint( "You cannot duplicate more than ", maxDuplicate, " constraint", ( maxDuplicate > 1 and "s" or "" ) .. " at once." )
+				return
+			end
+
 			if ConstraintEditor.NetStartWrite( NT.DUPLIC_CONSTRS ) then
 				ConstraintEditor.NetWriteConstrIDs( constrBrowser.selectionData.IDs )
 				net.SendToServer()
@@ -171,15 +182,15 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 		-- Add the given IDs to the selection if the data type matches
 		if t.dataType == selectionDataType then
 
-			local count			= table.Count( IDs )
-			local maxCountCVar	= GetConVar( "sv_constraint_editor_max_edit" )
-			local maxCount		= maxCountCVar and maxCountCVar:GetInt() or 2048
+			local count				= table.Count( IDs )
+			local maxCountCVar		= GetConVar( "sv_constraint_editor_max_edit" )
+			local maxCount			= maxCountCVar and maxCountCVar:GetInt() or 2048
 
 			for _, ID in pairs( selection ) do
 
 				if count >= maxCount then
 					local ply = LocalPlayer()
-					if ply then
+					if IsValid( ply ) then
 						ply:EmitSound( "buttons/button10.wav", 75, 100, 0.35 )
 						ConstraintEditor.ChatPrint( "You cannot select more than ", maxCount, " constraint", maxCount > 1 and "s." or "." )
 					end
@@ -194,6 +205,7 @@ function PANEL:SelectIDs( selection, selectionDataType, elimination )
 				self.constraintTree:VisualSelectConstrNode( ID, true )
 
 			end
+
 		end
 	end
 

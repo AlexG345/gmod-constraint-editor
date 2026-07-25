@@ -64,8 +64,6 @@ ConstraintEditor.netFunctions = {
 			ConstraintEditor.ToggleEntity( ent, clearSelection )
 		end
 
-		return ent
-
 	end,
 
 	[NT.TOOLGUN_RIGHT_CLICK] = function()
@@ -88,7 +86,8 @@ ConstraintEditor.netFunctions = {
 
 	[NT.TOOLGUN_RELOAD] = function()
 
-		local ent = net.ReadEntity() --LocalPlayer():GetEyeTrace().Entity
+		local ent	= net.ReadEntity() --LocalPlayer():GetEyeTrace().Entity
+		local bone	= net.ReadUInt( ConstraintEditor.netBitCounts.PHYS_NUM )
 
 		local constrBrowser	= ConstraintEditor.GetConstrBrowser()
 		local constrIDs		= constrBrowser and constrBrowser.selectionData.IDs
@@ -98,12 +97,14 @@ ConstraintEditor.netFunctions = {
 			if ConstraintEditor.NetStartWrite( NT.TRANSFER_CONSTRS ) then
 				ConstraintEditor.NetWriteConstrIDs( constrIDs )
 				net.WriteEntity( ent )
+				net.WriteUInt( bone, ConstraintEditor.netBitCounts.PHYS_NUM )
 				net.SendToServer()
 			end
 		else
 			-- Transfer all the constraints of the selected entities (except ent) to ent
 			if ConstraintEditor.NetStartWrite( NT.TRANSFER_ALL_CONSTRS ) then
 				net.WriteEntity( ent )
+				net.WriteUInt( bone, ConstraintEditor.netBitCounts.PHYS_NUM )
 				net.SendToServer()
 			end
 		end
@@ -115,8 +116,6 @@ ConstraintEditor.netFunctions = {
 		local data = net.ReadTable()
 		ConstraintEditor.RegisterConstrs( data )
 
-		return data
-
 	end,
 
 	[NT.UNREGISTER_CONSTRS] = function()
@@ -124,8 +123,6 @@ ConstraintEditor.netFunctions = {
 		local constrIDs = getNetConstrIDs()
 
 		ConstraintEditor.UnregisterConstrs( constrIDs )
-
-		return constrIDs
 
 	end,
 
@@ -143,8 +140,6 @@ ConstraintEditor.netFunctions = {
 			constrEditor:Fill( { values = data[1], args = data[2] }, constrBrowser.selectionData.dataType )
 		end
 
-		return data
-
 	end,
 
 	[NT.SELECT_CONSTRS] = function()
@@ -155,8 +150,24 @@ ConstraintEditor.netFunctions = {
 
 		ConstraintEditor.SelectConstrs( selection, constrType, elimination )
 
-		return selection, constrType, elimination
-
 	end,
 
 }
+
+
+-- Call this to start listening to net messages
+function ConstraintEditor.HandleNetRequests()
+
+	net.Receive( "constraint_editor_net", function( len, ply )
+
+		local tag = net.ReadUInt( BIT_COUNT.TAG )
+		ConstraintEditor.netFunctions[tag]( ply )
+
+		--netDebug( true, false, tag )
+
+	end )
+
+end
+
+
+ConstraintEditor.HandleNetRequests()

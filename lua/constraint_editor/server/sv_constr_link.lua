@@ -27,7 +27,7 @@ end
 --	consrType (string): the type of constraint to be matched (Rope, Weld, ...), use nil or false for no type restriction
 --
 -- Returns:
---	constrs (table): table whose keys are the constraint entities that are linked to at least one entity from entities (arg), and optionally whose type is constrType (arg).
+--	constrs (table): sequential table whose keys are the constraint entities that are linked to at least one entity from entities (arg), and optionally whose type is constrType (arg).
 function ConstraintEditor.FindConstrsLinkedToEnts( entities, constrType )
 
 	local constrs = {}
@@ -40,7 +40,7 @@ function ConstraintEditor.FindConstrsLinkedToEnts( entities, constrType )
 		for _, constrTable in ipairs( c ) do
 			local constr = constrTable.Constraint
 			if constr and not found[constr] then
-				table.insert( constrs, constrTable )
+				constrs[#constrs + 1] = constrTable
 				found[constr] = true
 			end
 		end

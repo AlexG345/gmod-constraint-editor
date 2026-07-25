@@ -1,9 +1,18 @@
 -- Contains:
 --	Functions to send/receive data to/from the client
---	The behavior when receiving data from the client
+--	The behavior when receiving data from the client (moving logic away from this file would be great)
 
 
 util.AddNetworkString( "constraint_editor_net" )
+
+
+CreateConVar(
+	"sv_constraint_editor_cooldown_enabled",
+	game.SinglePlayer() and "0" or "1",
+	{},
+	"Limit the rate at which players can do constraint operations (using constraint editor).",
+	0, 1
+)
 
 
 local NT				= ConstraintEditor.netTags
@@ -102,7 +111,7 @@ local function getNetConstrs( ply, constrCount )
 			badConstrIDs[constrID] = true
 		else
 			validConstrCount = validConstrCount + 1
-			table.insert( validConstrs, constr )
+			validConstrs[validConstrCount] = constr
 		end
 
 	end
@@ -134,8 +143,6 @@ ConstraintEditor.netFunctions = {
 		local ent = net.ReadEntity()
 		ConstraintEditor.RegisterEditedEntity( ent, ply, true )
 
-		return ent
-
 	end,
 
 	[NT.TOGGLE_ENTITY] = function( ply )
@@ -143,19 +150,18 @@ ConstraintEditor.netFunctions = {
 		local ent = net.ReadEntity()
 		ConstraintEditor.ToggleEditedEntity( ent, ply )
 
-		return ent
-
 	end,
 
 	[NT.IGNORE_ENTITY] = function( ply )
 
 		local ent = net.ReadEntity()
 		ConstraintEditor.UnregisterConstrs( constraint.GetTable( ent ), ply )
-		local t = ConstraintEditor.editedEnts
-		if ( t[ply] and t[ply][ent] ) then t[ply][ent] = nil end
-		ConstraintEditor.FindAndSetProperToolStage( ply )
 
-		return ent
+		local playerData = ConstraintEditor.playersData[ply]
+		if not playerData then return end
+
+		playerData.editedEnts[ent] = nil
+		ConstraintEditor.FindAndSetProperToolStage( ply )
 
 	end,
 
@@ -167,47 +173,56 @@ ConstraintEditor.netFunctions = {
 		if not constr then return end
 		ConstraintEditor.FillEditorWithConstr( constr, ply, getDefault )
 
-		return constr, getDefault
-
 	end,
 
 	[NT.REMOVE_CONSTRS] = function( ply )
 
-		local constrs = getNetConstrs( ply )
+		local constrs, constrCount = getNetConstrs( ply )
 
 		ConstraintEditor.DeleteConstrs( constrs )
 
-		return constrs
+		return constrCount
 
 	end,
 
 	[NT.UPDATE_CONSTRS] = function( ply )
 
 		local newConstrData = ConstraintEditor.NetReadTable()
-		local constrs = getNetConstrs( ply )
+		local constrs, constrCount = getNetConstrs( ply )
 		ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply, true, true, true, true )
 
-		return newConstrData, constrs
+		return constrCount
 	end,
 
 	[NT.DUPLIC_CONSTRS] = function( ply )
 
-		local constrs = getNetConstrs( ply )
+		local constrs, constrCount = getNetConstrs( ply )
+
+		local maxDuplicateCVar	= GetConVar( "sv_constraint_editor_max_duplicate" )
+		local maxDuplicate		= maxDuplicateCVar and maxDuplicateCVar:GetInt() or 2048
+		if constrCount > maxDuplicate then return end
+
 		ConstraintEditor.CreateConstrsFromConstrs( constrs, {}, ply, true, false, false, false )
 
-		return constrs
+		return constrCount
 
 	end,
 
 	[NT.TRANSFER_CONSTRS] = function( ply )
 
-		local constrs	= getNetConstrs( ply )
-		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local constrs, constrCount	= getNetConstrs( ply )
+		local newEnt				= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local newBone				= net.ReadUInt( ConstraintEditor.netBitCounts.PHYS_NUM )
 
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply ) or {}
 		if not ( newEnt and editedEnts ) then return end
-		local entChange = {}
-		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
+
+		local attachsChange = {}
+		local attachChange = { ent = newEnt, bone = newBone }
+
+		for ent in pairs( editedEnts ) do
+			attachsChange[ent] = attachChange
+		end
 
 		ConstraintEditor.FillEditorWithConstr( nil, ply )
 
@@ -216,20 +231,27 @@ ConstraintEditor.netFunctions = {
 			local tool = ConstraintEditor.GetTool( ply )
 			delete = tool and tool:GetClientBool( "transfer_delete", true )
 		end
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
-		return newEnt, constrs
+		ConstraintEditor.ChangeConstrsAttachs( attachsChange, constrs, ply, delete )
+
+		return constrCount
 
 	end,
 
+	-- This is mostly the same as above, but all constraints linked to the edited entities are affected instead.
 	[NT.TRANSFER_ALL_CONSTRS] = function( ply )
 
-		local newEnt = ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local newEnt	= ConstraintEditor.AccessEntity( ply, net.ReadEntity(), 3 )
+		local newBone	= net.ReadUInt( ConstraintEditor.netBitCounts.PHYS_NUM )
 
 		local editedEnts = ConstraintEditor.GetEditedEntities( ply )
 		if not ( newEnt and editedEnts ) then return end
-		local entChange = {}
-		for ent in pairs( editedEnts ) do entChange[ent] = newEnt end
+
+		local attachsChange	= {}
+		local attachChange	= { ent = newEnt, bone = newBone }
+		for ent in pairs( editedEnts ) do
+			attachsChange[ent] = attachChange
+		end
 
 		local constrs = ConstraintEditor.FindConstrsLinkedToEnts( editedEnts )
 
@@ -240,10 +262,63 @@ ConstraintEditor.netFunctions = {
 			local tool = ConstraintEditor.GetTool( ply )
 			delete = tool and tool:GetClientBool( "transfer_delete", true )
 		end
-		ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
 
+		ConstraintEditor.ChangeConstrsAttachs( attachsChange, constrs, ply, delete )
 
-		return newEnt
+		return #constrs
 
 	end,
 }
+
+
+local operationNetTags = {
+	[NT.UPDATE_CONSTRS]			= true,
+	[NT.REMOVE_CONSTRS]			= true,
+	[NT.DUPLIC_CONSTRS]			= true,
+	[NT.TRANSFER_CONSTRS]		= true,
+	[NT.TRANSFER_ALL_CONSTRS]	= true,
+}
+
+
+-- Call this to start listening to net messages
+function ConstraintEditor.HandleNetRequests()
+
+	net.Receive( "constraint_editor_net", function( len, ply )
+
+		if not ( ply and ply:IsPlayer() ) then return end
+
+		local tag		= net.ReadUInt( BIT_COUNT.TAG )
+		local netFunc	= tag and ConstraintEditor.netFunctions[tag]
+
+		if not netFunc then return end
+
+		local do_cooldown
+		if operationNetTags[tag] then
+			local cooldownCVar = GetConVar( "sv_constraint_editor_cooldown_enabled" )
+			do_cooldown = cooldownCVar and cooldownCVar:GetBool()
+		end
+
+		if do_cooldown then
+			local playerData	= ConstraintEditor.GetOrCreatePlayerData( ply )
+			local cooldown		= playerData.nextOperationTime - CurTime()
+			if cooldown > 0 then
+				ply:ChatPrint(
+					string.format( "Constraint Editor - Please wait %.2f more seconds before your next action.", cooldown )
+				)
+				return
+			end
+
+			local affectedConstrs			= netFunc( ply )
+			playerData.nextOperationTime	= CurTime() + 0.05 + 0.06 * math.sqrt( affectedConstrs or 0 )
+		else
+			netFunc( ply )
+		end
+
+		--netDebug( true, false, tag )
+
+	end )
+
+end
+
+
+ConstraintEditor.HandleNetRequests()

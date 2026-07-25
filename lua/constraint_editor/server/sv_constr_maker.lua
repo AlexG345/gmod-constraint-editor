@@ -27,19 +27,32 @@ local NT = ConstraintEditor.netTags
 --
 -- Returns:
 --	constrData (table): Constraint data with new entities and appropriately transformed positions
-local function LocalToLocalConstrData( constrData, mats, newEntities )
+local function LocalToLocalConstrData( constrData, mats, newEntities, newBones )
 
 	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrData )
 	local posKeys		= ConstraintEditor.GetConstrPosKeys( constrData )
+	local boneKeys		= ConstraintEditor.GetConstrBoneKeys( constrData )
 
 	for i, entKey in pairs( entKeys ) do
 
+		local boneKey	= boneKeys[i]
+
 		local ent		= constrData[entKey] or constrData[i]
-		local newEnt	= newEntities[entKey] or newEntities[i]
+		local bone		= constrData[boneKey] or 0
 
-		constrData[entKey] = newEnt
+		local phys		= ( ent:GetPhysicsObjectCount() > 1 ) and ent:GetPhysicsObjectNum( bone )
+		if not IsValid( phys ) then phys = nil end
 
-		local mat, newMat = ( mats[ent] or ent:GetWorldTransformMatrix() ), ( mats[newEnt] or newEnt:GetWorldTransformMatrix() )
+		local newEnt	= newEntities and ( newEntities[entKey] or newEntities[i] )
+		local newBone	= newBones and ( newBones[boneKey] or newBones[i] )
+		local newPhys	= newBone and ( newEnt:GetPhysicsObjectCount() > 1 ) and newEnt:GetPhysicsObjectNum( newBone )
+		if not IsValid( newPhys ) then newPhys = nil end
+
+		if newEnt then constrData[entKey] = newEnt end
+		if boneKey and newBone then constrData[boneKey] = newBone end
+
+		local mat		= ( phys and ( mats[phys] or phys:GetPositionMatrix() ) ) or mats[ent] or ent:GetWorldTransformMatrix()
+		local newMat	= ( newPhys and ( mats[newPhys] or newPhys:GetPositionMatrix() ) ) or mats[newEnt] or newEnt:GetWorldTransformMatrix()
 
 		if mat == newMat then continue end
 
@@ -133,7 +146,7 @@ end
 local function inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, replacedEnt, replacedBone )
 
 	local replacedPhys	= replacedBone and ( replacedEnt:GetPhysicsObjectCount() > 1 ) and replacedEnt:GetPhysicsObjectNum( replacedBone )
-	replacedPhys		= IsValid( replacedPhys ) or nil
+	if not IsValid( replacedPhys ) then replacedPhys = nil end
 	local from			= replacedPhys and replacedPhys:GetPositionMatrix() or replacedEnt:GetWorldTransformMatrix()
 	local to			= replacedPhys and mats[replacedPhys] or mats[replacedEnt]
 
@@ -177,7 +190,6 @@ local function restoreConstrBehaviorAfterEntChange(
 
 	local oldEnt, oldBone	= replacement.old.ent, replacement.old.bone
 	local newEnt, newBone	= replacement.new.ent, replacement.new.bone
-	--local entKey, boneKey	= entKeys[entIndex], boneKeys[entIndex]
 
 	if not ( isentity( oldEnt ) and isentity( newEnt ) ) or ( oldEnt == newEnt and oldBone == newBone ) then return end
 
@@ -196,7 +208,10 @@ local function restoreConstrBehaviorAfterEntChange(
 		mats[newEnt] = nil
 	end
 
-	if not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, oldEnt, oldBone ) then
+	-- TODO: the ent comparison is a fix for a bug where you transfer locally ent1 then transfer globally (world-pos) ent2 to the same ent
+	-- is this fix good or does this bug stem from another place?
+	local doInheritCorrection = newEnt ~= otherEnt
+	if doInheritCorrection and not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, oldEnt, oldBone ) then
 		return
 	end
 
@@ -208,10 +223,11 @@ local function restoreConstrBehaviorAfterEntChange(
 	end
 
 	local entities	= { [entIndex] = newEnt, [otherEntIndex] = otherEnt }
+	local bones		= { [entIndex] = newBone, [otherEntIndex] = otherBone }
 
-	LocalToLocalConstrData( newConstrData, mats, entities )
+	LocalToLocalConstrData( newConstrData, mats, entities, bones )
 
-	overwriteInfoFromConstrCreationTime( BuildDupeInfo, mats, entities, { [entIndex] = newBone, [otherEntIndex] = otherBone } )
+	overwriteInfoFromConstrCreationTime( BuildDupeInfo, mats, entities, bones )
 
 end
 
@@ -263,59 +279,58 @@ local function restoreConstrBehaviorAfterEntsChange( constrData, newConstrData, 
 			preserveLocalBehavior
 		) or update
 
-		print("------- done -------")
-		PrintTable( constrData )
-		print("--------------------\n")
-
 	end
-
-end
-
-
--- Similar to above but changes entities of constr
--- Returns updated constrData, can recreate constr
-local function changeConstrEnts( entChange, constr, ply, delete )
-
-	local constrData	= ConstraintEditor.GetConstrData( constr )
-	local entKeys		= ConstraintEditor.GetConstrEntKeys( constrData )
-	local update		= false
-
-	for i, entKey in pairs( entKeys ) do
-
-		local ent		= constrData[entKey]
-		local newEnt	= ent and entChange[ent] or entChange[i]
-
-		if newEnt then
-			update = ( newEnt ~= ent ) or update
-			constrData[entKey] = newEnt
-		end
-
-	end
-
-	if update then ConstraintEditor.CreateConstrsFromConstrs( { constr }, constrData, ply, true, true, delete ) end
-
-	return constrData
 
 end
 
 
 -- Lets you replace the entities of multiple constraints while trying to preserve the constraints' behaviors (if they break by doing so, does nothing)
--- TODO: Check if this can actually be used alone safely, write the answer to that HERE...
 --
 -- Arguments:
 -- entChange (table): Table whose keys are the replaced entities / constraint data entities' indexes and values the replacement (=new) entities:
 --	If the key is an entity, any occurence of that entity in the constraints data will be targetted
 --	If the key is 1 (resp. 2), the first (resp. second) entity in the constraints data will be targetted (with lower priority than entity key)
-function ConstraintEditor.ChangeConstrsEnts( entChange, constrs, ply, delete )
-
-	for _, newEnt in pairs( entChange ) do
-		if not ( isentity( newEnt ) and ( newEnt:IsValid() or newEnt:IsWorld() ) ) then return false end
-	end
+function ConstraintEditor.ChangeConstrsAttachs( attachsChange, constrs, ply, delete )
 
 	for _, constr in pairs( constrs ) do
 
-		if istable( constr ) then constr = constr.Constraint end
-		if constr then changeConstrEnts( entChange, constr, ply, delete ) end
+		if istable( constr ) then
+			constr = constr.Constraint
+		end
+
+		local constrData	= ConstraintEditor.GetConstrData( constr )
+		-- Do not remove this check: if the constraint is something like the slideconstraint for winches, it doesn't have a Type key, thus constrData will be nil.
+		if not constrData then continue end
+
+		local entKeys		= ConstraintEditor.GetConstrEntKeys( constrData )
+		local boneKeys		= ConstraintEditor.GetConstrBoneKeys( constrData )
+		local update		= false
+
+		for entIndex, entKey in pairs( entKeys ) do
+
+			local boneKey			= boneKeys[entIndex]
+			local ent, bone			= constrData[entKey], constrData[boneKey]
+
+			local attachChange		= attachsChange[ent] or attachsChange[entIndex]
+			if not attachChange then continue end
+
+			local newEnt, newBone	= attachChange.ent, attachChange.bone
+
+			if newEnt and newEnt ~= ent then
+				update				= true
+				constrData[entKey]	= newEnt
+			end
+
+			if newBone and newBone ~= bone then
+				update				= true
+				constrData[boneKey]	= newBone
+			end
+
+		end
+
+		if update then
+			ConstraintEditor.CreateConstrsFromConstrs( { constr }, constrData, ply, true, true, delete )
+		end
 
 	end
 
@@ -409,7 +424,7 @@ local function createConstrAccurate( constrType, constrData, BuildDupeInfo, dupl
 	end
 
 	for phys, b in pairs( restoreMotions ) do
-		obj:EnableMotion( b )
+		phys:EnableMotion( b )
 	end
 
 	return constr, rope
@@ -526,6 +541,7 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 
 		-- Safety measures for constrData.
 		ConstraintEditor.TransformConstrDataKeys( newConstrDataCopy, desc, false, true ) -- Make sure we use str keys
+
 		local isChanged = ConstraintEditor.CompleteConstrData( constrData, newConstrDataCopy, desc, ply )
 
 		if delete and not isChanged then continue end

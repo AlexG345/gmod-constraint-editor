@@ -15,3 +15,12 @@ CreateConVar(
 -- 	"Allow changing the entities constraints are linked to using constraint editor.",
 -- 	0, 1
 -- )
+
+
+CreateConVar(
+	"sv_constraint_editor_max_duplicate",
+	game.SinglePlayer() and "1" or "4",
+	{ FCVAR_REPLICATED },
+	"The maximum amount of constraints that can be duplicated at once using constraint editor.",
+	0, 1
+)

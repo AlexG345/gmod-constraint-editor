@@ -1,17 +1,33 @@
 local NT				= ConstraintEditor.netTags
-local TABLES_CLEANUP_CD	= 30 -- cooldown for table cleanup
+local TABLES_CLEANUP_CD	= 40 -- cooldown for cleaning up players data
 
 
 -- Keys are constraint creation IDs, values are the associated constraint entities
 ConstraintEditor.constrs = {}
 
--- Keys are players, values are entities (props)
-ConstraintEditor.editedEnts = {}
+-- Keys are players, values are table containing a table of edited entities and a cooldown
+ConstraintEditor.playersData = {}
 
 -- Time since the last table cleanup
 ConstraintEditor.lastTablesCleanup = CurTime()
 
 
+-------------------
+--	Player info  --
+-------------------
+
+function ConstraintEditor.GetOrCreatePlayerData( ply )
+
+	local t = ConstraintEditor.playersData[ply]
+
+	if not t then
+		t = { editedEnts = {}, nextOperationTime = CurTime() }
+		ConstraintEditor.playersData[ply] = t
+	end
+
+	return t
+
+end
 
 
 -------------------
@@ -121,9 +137,9 @@ function ConstraintEditor.RegisterEditedEntity( ent, ply )
 
 	if not ConstraintEditor.AccessEntity( ply, ent, 1 ) then return end
 
-	local t = ConstraintEditor.editedEnts
-	if not t[ply] then t[ply] = {} end
-	t[ply][ent] = ent
+	local playerData = ConstraintEditor.GetOrCreatePlayerData( ply )
+	if playerData.editedEnts[ent] then return end
+	playerData.editedEnts[ent] = ent
 
 	local surfaceConstrsData, constrs = ConstraintEditor.GetEntSurfaceConstrsData( ent )
 
@@ -142,9 +158,9 @@ end
 
 function ConstraintEditor.UnregisterEditedEntity( ent, ply )
 
-	local t = ConstraintEditor.editedEnts
-	if not ( t[ply] and t[ply][ent] ) then return end
-	t[ply][ent] = nil
+	local editedEnts = ConstraintEditor.GetEditedEntities( ply )
+	if not ( editedEnts and editedEnts[ent] ) then return end
+	editedEnts[ent] = nil
 
 	-- unsharedConstrs: constraints linked to ent but not to other entities in the selection
 	local unsharedConstrs = ConstraintEditor.FindConstrsNotLinkedToEnts( ent, ConstraintEditor.GetEditedEntities( ply ) )
@@ -158,8 +174,9 @@ end
 
 function ConstraintEditor.ToggleEditedEntity( ent, ply )
 
-	local t = ConstraintEditor.editedEnts
-	if t[ply] and t[ply][ent] then
+	local playerData = ConstraintEditor.GetOrCreatePlayerData( ply )
+	local editedEnts = playerData.editedEnts
+	if editedEnts[ent] then
 		ConstraintEditor.UnregisterEditedEntity( ent, ply )
 	else
 		ConstraintEditor.RegisterEditedEntity( ent, ply )
@@ -172,7 +189,10 @@ end
 -- Clears the player edited entities, handles clientside consequences
 function ConstraintEditor.UnregisterAllEditedEntities( ply )
 
-	ConstraintEditor.editedEnts[ply] = nil
+	local playerData = ConstraintEditor.playersData[ply]
+	if not playerData then return end
+
+	playerData.editedEnts = {}
 
 	ConstraintEditor.NetSend( NT.UNREGISTER_ALL_CONSTRS, ply )
 
@@ -183,27 +203,33 @@ end
 
 
 function ConstraintEditor.GetEditedEntities( ply )
-	return ConstraintEditor.editedEnts[ply]
+	local playerData = ConstraintEditor.playersData[ply]
+	return playerData and playerData.editedEnts
 end
 
 
+-- TODO: upgrade this to target only players with non empty edited entities table?
 function ConstraintEditor.GetEditorPlayers()
-	return table.GetKeys( ConstraintEditor.editedEnts )
+	return table.GetKeys( ConstraintEditor.playersData )
 end
 
 
--- Clears EditedEnts if player or entity is invalid
+-- Removes a player's data if that player is invalid.
+-- Removes invalid entities from players' edited entities.
 function ConstraintEditor.CleanupTables()
 
 	ConstraintEditor.lastTablesCleanup = CurTime()
 
-	for ply, entities in pairs( ConstraintEditor.editedEnts ) do
+	local playersData = ConstraintEditor.playersData
+
+	for ply, playerData in pairs( playersData ) do
 		if not IsValid( ply ) then
-			ConstraintEditor.editedEnts[ply] = nil
+			playersData[ply] = nil
 		else
-			for ent in pairs( entities ) do
-				if not IsValid( ent ) then
-					ConstraintEditor.editedEnts[ply][ent] = nil
+			local editedEnts = playerData.editedEnts
+			for editedEnt in pairs( editedEnts ) do
+				if not IsValid( editedEnt ) then
+					editedEnts[editedEnt] = nil
 				end
 			end
 		end

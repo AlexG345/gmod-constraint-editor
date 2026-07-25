@@ -111,6 +111,7 @@ function TOOL:Reload( trace )
 		local ply = self:GetOwner()
 		if ConstraintEditor.NetStartWrite( ConstraintEditor.netTags.TOOLGUN_RELOAD, ply ) then
 			net.WriteEntity( trace.Entity )
+			net.WriteUInt( trace.PhysicsBone or 0, ConstraintEditor.netBitCounts.PHYS_NUM )
 			net.Send( ply )
 		end
 	end
@@ -118,9 +119,6 @@ function TOOL:Reload( trace )
 	return true
 
 end
-
-
-ConstraintEditor.HandleNetRequests( mode )
 
 
 local conVars = CLIENT and TOOL:BuildConVarList() or nil
