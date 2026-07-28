@@ -199,7 +199,11 @@ local function restoreConstrBehaviorAfterEntChange(
 
 	-- Get the positions and angles the old entities must be at during constraint creation
 	local mats = ConstraintEditor.GetMatricesFromConstrCreation( BuildDupeInfo, newConstrData, entKeys, boneKeys )
-	if not mats then return end
+	local hasInfo = istable( mats )
+	mats = mats or {}
+	-- TODO BUG IMPORTANT: pre fix this didn't work for MAKE SPHERICAL ents since they don't have builddupeinfo?
+	-- or {} was added since we don't stop anymore
+	-- if not mats then return end
 
 	if preserveLocalBehavior then
 		-- Do as if the new entity had the replaced entity transforms then make the constraint data local to the new entity
@@ -210,7 +214,7 @@ local function restoreConstrBehaviorAfterEntChange(
 
 	-- TODO: the ent comparison is a fix for a bug where you transfer locally ent1 then transfer globally (world-pos) ent2 to the same ent
 	-- is this fix good or does this bug stem from another place?
-	local doInheritCorrection = newEnt ~= otherEnt
+	local doInheritCorrection = hasInfo and ( newEnt ~= otherEnt )
 	if doInheritCorrection and not inheritCorrection( mats, otherEnt, otherBone, newEnt, newBone, oldEnt, oldBone ) then
 		return
 	end
@@ -548,6 +552,7 @@ function ConstraintEditor.CreateConstrsFromConstrs( constrs, newConstrData, ply,
 
 		local BuildDupeInfo = copyInfoFromConstrCreationTime( constr.BuildDupeInfo )
 
+		-- TODO BUG IMPORTANT: the line below causes constraints tied to make spherical ents to revert to their unchanged entities
 		if restoreBehavior and isChanged then restoreConstrBehaviorAfterEntsChange( constrData, newConstrDataCopy, BuildDupeInfo, transferMode ) end
 
 		removeOldConstrIfNeeded( constr, newConstrDataCopy )

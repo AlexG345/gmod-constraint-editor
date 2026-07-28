@@ -32,11 +32,28 @@ function ConstraintEditor.NetTargetIsValid( tar )
 end
 
 
--- original function is from sh_net.lua
-local oNetStartWrite = ConstraintEditor.NetStartWrite
+-- Starts a net message with a tag and optional arguments.
+-- Note that this does not send the message, only starts it and writes some data.
+--
+-- Arguments:
+--	tag (int): A number from the ConstraintEditor.netTags table. Used to describe the goal of the message and the data held by it.
+--	... (tuple of tables | nil): A tuple of tables in the form { v, arg }, where:
+--		v (string | unsigned integer | table | boolean | entity | vector | angle | matrix | color) is some data that you want to send
+--		arg (int | nil) is the second argument to be passed to the net write function (e.g. the maximum bit count of a constraint creation ID...)
 function ConstraintEditor.NetStartWrite( tag, tar )
-	return ConstraintEditor.NetTargetIsValid( tar ) and oNetStartWrite( tag )
+
+	if not ( isnumber( tag ) and ConstraintEditor.NetTargetIsValid( tar ) ) then return false end
+
+	-- netDebug( true, true, tag, nil )
+
+	net.Start( "constraint_editor_net" )
+
+		net.WriteUInt( tag, BIT_COUNT.TAG )
+
+	return true
+
 end
+
 
 
 -- Simply send a net tag to some client(s)
